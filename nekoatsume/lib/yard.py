@@ -144,12 +144,11 @@ def cats(data):
         printer.warn(data["prefix"], "There are no cats in your yard right now!")
         return
     
-    cat_options = [(cat, cat) for cat in cat_names]
+    cat_options = [(cat, cat) for cat in cats_in_yard]
     choice = get_choice(cat_options, "Which cat would you like to look at?", data["prefix"])
     
     if choice:
         desc_cat(data, choice)
-
 
 def desc_cat(data, cat):
     printer.yard(data["prefix"], data["cats"][cat]["desc"])
