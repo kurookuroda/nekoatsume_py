@@ -24,7 +24,7 @@ except NameError:
     pass
 
 
-# ========== タイプライター表示関数（追加） ==========
+# ========== タイプライター表示関数 ==========
 def tw(text, delay=0.03):
     """タイプライター風に一文字ずつ表示する"""
     for char in text:
@@ -64,12 +64,6 @@ def banner():
             print(l.format(printer.PColors, printer.PColors), end='')
         print('\n')
 
-"""
-TODO: this should be remade but where we just take the time diff
-and do itterative deletions to it until we get to some minimal
-amt and store it, rather than this time left precomputation
-"""
-
 
 def compute_interactions(data):
     """Compute cat interactions."""
@@ -89,14 +83,11 @@ def compute_interactions(data):
 def desc_yard(data):
     """Describe current yard situation."""
     toys = [item for item in data["yard"]]
-    printer.p(
-        data["prefix"], "You have {0} total spaces on your lawn".format(6))
-    # TODO: have this reflect size
+    tw("You have {0} total spaces on your lawn".format(6))
     for toy in toys:
         occupants = toy["occupant"] or ["no one"]
-        printer.p(
-            data["prefix"], "You have a {0} being used by {1}".format(
-                toy["name"], ", and ".join(occupants)))
+        tw("You have a {0} being used by {1}".format(
+            toy["name"], ", and ".join(occupants)))
 
 
 def check_status(data):
@@ -143,23 +134,19 @@ def recieve_treasures(data):
 
 
 def check_treasures(data):
-    temp = "{.TREASURE}[TREASURE]{.ENDC}".format(
-            printer.PColors, printer.PColors)
-    treasures = [cat for cat in data["cats"].values() if cat["given_treasure"]]
+    treasures = [cat for cat in data["cats"].values() if cat.get("given_treasure", False)]
     if treasures:
         for cat in treasures:
-            printer.p(temp, "You have a treasure from {0}! {1}!!!".format(
-                    cat["name"], cat["treasure"]))
+            tw("You have a treasure from {0}! {1}!!!".format(
+                cat["name"], cat["treasure"]))
     else:
-        printer.p(temp, "Aww, no cats have given you treasures yet.. But don't worry! Keep trying and I'm sure they will!!")
+        tw("Aww, no cats have given you treasures yet.. But don't worry! Keep trying and I'm sure they will!!")
 
 
 def collect_money(data):
     """Collect money left by cats."""
     if len(data["pending_money"]) == 0:
-        printer.p("{.YELLOW}[$$$$$$]{.ENDC}".format(
-            printer.PColors,
-            printer.PColors), "Sorry, no cats have left you anything")
+        tw("Sorry, no cats have left you anything")
         return
     pending = data["pending_money"][:]
     data["pending_money"] = []
@@ -223,7 +210,6 @@ def main(data):
     banner()
     data["prefix"] = "{.BLUE}[Welcome!]{.ENDC}".format(
         printer.PColors, printer.PColors)
-    #TODO track all seen cats at this point, add them to some sort of cat index
     check_status(data)
     bestow_treasures(data, prev_start)
     recieve_treasures(data)
