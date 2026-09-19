@@ -50,6 +50,8 @@ def roll_to_enter(cat):
 
 def pick_toy(data, cat):
     yard_toys = [toy for toy in data["yard"]]
+    if len(yard_toys) == 0:
+        return None
     fav_toy = [toy for toy in yard_toys if toy["name"] == cat["fav_toy"]]
     if cat["exclusive"]:
         if fav_toy:
@@ -57,7 +59,7 @@ def pick_toy(data, cat):
         else:
             return None
     return random.choice(yard_toys)
-
+    
 def is_open(toy):
     return len(toy["occupant"]) < toy["size"]
 
