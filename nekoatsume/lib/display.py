@@ -108,8 +108,13 @@ def bestow_treasures(data, prev_start):
     """Randomly decide whether or not to give the user a treasure."""
     if not prev_start:
         return
-    not_given = [cat for cat in data["cats"].values() if cat["total_time_in_yard"] > 0 and not cat["given_treasure"]]
-    if len(not_given) == 0:
+    if not data.get("cats"):
+        return
+    not_given = [cat for cat in data["cats"].values()
+                   if isinstance(cat, dict)
+                   and cat.get("total_time_in_yard", 0) > 0
+                   and not cat.get("given_treasure", False)]
+    if not not_given:
         return
     since_last_run = data["start"] - prev_start
     if since_last_run < 0:
@@ -118,8 +123,10 @@ def bestow_treasures(data, prev_start):
     bonus = min(1.0, absent)
     base = 0.05
     prob = base + (base*bonus)
-    rnd = random.random() # may the RNG bless you
+    rnd = random.random()
     if rnd >= prob:
+        return
+    if not not_given:
         return
     giver = random.choice(not_given)
     data["cats"][giver["name"]]["given_treasure"] = True
@@ -129,11 +136,9 @@ def bestow_treasures(data, prev_start):
 def recieve_treasures(data):
     if len(data["pending_treasures"]) == 0:
         return
-    temp = "{.TREASURE}[TREASURE]{.ENDC}".format(
-            printer.PColors, printer.PColors)
-    # ========== 修正：printer.p -> tw ==========
     for treasure in data["pending_treasures"]:
-        tw("{0} gave you a treasure! {1}!!!".format(treasure[0], treasure[1]))
+        if isinstance(treasure, (list, tuple)) and len(treasure) >= 2:
+            tw("{0} gave you a treasure! {1}!!!".format(treasure[0], treasure[1]))
     data["pending_treasures"] = []
 
 
@@ -156,18 +161,18 @@ def collect_money(data):
             printer.PColors,
             printer.PColors), "Sorry, no cats have left you anything")
         return
-    for i in range(len(data["pending_money"])):
-        money = data["pending_money"].pop()
-        currency = money[2]
-        # ========== 修正：printer.p -> tw ==========
-        tw("Yes! {0} left you {1}{2} fish!".format(
-            money[0], str(money[1]), " gold" if currency == "g" else " silver"))
-        data[currency + "_fish"] += money[1]
+    pending = data["pending_money"][:]
+    data["pending_money"] = []
+    for money in pending:
+        if isinstance(money, (list, tuple)) and len(money) >= 3:
+            currency = money[2]
+            tw("Yes! {0} left you {1}{2} fish!".format(
+                money[0], str(money[1]), " gold" if currency == "g" else " silver"))
+            data[currency + "_fish"] += money[1]
 
 
 def print_help(data):
     """Print the game help."""
-    # ========== 修正：3箇所すべて printer.p -> tw ==========
     tw("Welcome to Neko Atsume!")
     tw("In this game cats come to visit you and you feed them")
     tw("it's pretty cool, so you should play more")
@@ -176,7 +181,6 @@ def print_help(data):
 def quit(data):
     """Quit the game."""
     data["want_to_play"] = False
-    # ========== 修正：printer.p -> tw ==========
     tw("Saving game! See you later!")
     prep_data_on_close(data)
 
