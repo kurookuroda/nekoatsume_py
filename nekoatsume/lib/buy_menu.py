@@ -13,6 +13,46 @@ except NameError:
     pass
 
 
+def get_choice(options, prompt, prefix):
+    """
+    番号または名前で選択を受け付ける共通関数。
+    options: [(key, display_name), ...] のリスト
+    戻り値: 選ばれた key、または None（キャンセル/無効）
+    """
+    if len(options) == 0:
+        printer.warn(prefix, "No options available!")
+        return None
+
+    for i, (key, name) in enumerate(options, 1):
+        printer.shop(prefix, "{0}. {1}".format(i, name))
+    
+    raw = input("{.SHOP}{}{.ENDC} {} ".format(
+        printer.PColors, prefix, printer.PColors, prompt))
+    
+    if raw.strip() == "":
+        return None
+    
+    try:
+        idx = int(raw.strip())
+        if 1 <= idx <= len(options):
+            return options[idx - 1][0]
+    except ValueError:
+        pass
+    
+    raw_norm = raw.strip().lower()
+    raw_norm = raw_norm.lstrip("a ").lstrip("an ").lstrip("the ")
+    
+    for key, name in options:
+        if raw_norm == key.lower():
+            return key
+        name_norm = name.lower().lstrip("a ").lstrip("an ").lstrip("the ")
+        if raw_norm == name_norm:
+            return key
+    
+    printer.warn(prefix, "I'm sorry I didn't recognize that option")
+    return None
+
+
 def menu(data):
     """Display item shop menu."""
     data["prefix"] = "[Item Shop]"
@@ -21,22 +61,30 @@ def menu(data):
         .format(data["s_fish"], data["g_fish"]))
     list_items(data)
     data["want_to_buy"] = True
-    actions = {"buy": buy_item,
-               "examine": ex_item,
-               "check wallet": wallet,
-               "list items": list_items,
-               "leave shop": exit_buy}
+    
+    actions = [
+        ("buy", "Buy"),
+        ("examine", "Examine"),
+        ("check wallet", "Check wallet"),
+        ("list items", "List items"),
+        ("leave shop", "Leave shop"),
+    ]
+    
     while data["want_to_buy"]:
-        data["completer"].set_actions(actions.keys())
-        printer.prompt("{.SHOP}{}{.ENDC}".format(
-            printer.PColors, data["prefix"], printer.PColors), actions.keys())
-        inp = input("{.SHOP}{}{.ENDC} What do you want to do? ".format(
-            printer.PColors, data["prefix"], printer.PColors))
-        if inp in actions:
-            actions[inp](data)
+        choice = get_choice(actions, "What do you want to do?", data["prefix"])
+        
+        if choice is None:
             continue
-        else:
-            printer.invalid(data["prefix"])
+        elif choice == "leave shop":
+            exit_buy(data)
+        elif choice == "buy":
+            buy_item(data)
+        elif choice == "examine":
+            ex_item(data)
+        elif choice == "check wallet":
+            wallet(data)
+        elif choice == "list items":
+            list_items(data)
 
 
 def list_items(data):
@@ -75,33 +123,34 @@ def wallet(data):
 
 def ex_item(data):
     """Examine item."""
-    items = data["items"].keys()
-    printer.shop(
-        data["prefix"], "Here are the items you can see: " + ", ".join(items))
-    data["completer"].set_actions(items)
-    inp = input("{.SHOP}{}{.ENDC} which would you like to examine? ".format(
-        printer.PColors, data["prefix"], printer.PColors))
-    if inp in items:
-        print("{.SHOP}{}{.ENDC}".format(
-            printer.PColors,
-            data["items"][inp]["description"],
-            printer.PColors))
-    else:
-        printer.warn(data["prefix"], "Uhhh sorry, I don't see that item.")
+    items = []
+    for key, item in data["items"].items():
+        display = "{0} ({1}{2})".format(item["name"], item["cost"], item["currency"])
+        items.append((key, display))
+    
+    choice = get_choice(items, "Which would you like to examine?", data["prefix"])
+    
+    if choice:
+        item = data["items"][choice]
+        printer.shop(data["prefix"], item.get("description", "No description available."))
 
 
 def buy_item(data):
     """Buy an item."""
-    buyable_items = [item for item in data["items"].keys()
-                     if data["items"][item]["attributes"] == []]
-    data["completer"].set_actions(buyable_items)
-    inp = input("{.SHOP}{}{.ENDC} What item would you like to buy? ".format(
-        printer.PColors, data["prefix"], printer.PColors))
-    if inp in buyable_items:
-        try_to_buy(data, inp)
-    else:
-        printer.warn(data["prefix"], "Uhhh sorry, we don't carry that item.")
-
+    buyable_items = []
+    for key, item in data["items"].items():
+        if item["attributes"] == []:
+            display = "{0} ({1}{2})".format(item["name"], item["cost"], item["currency"])
+            buyable_items.append((key, display))
+    
+    if len(buyable_items) == 0:
+        printer.warn(data["prefix"], "Nothing left to buy!")
+        return
+    
+    choice = get_choice(buyable_items, "What item would you like to buy?", data["prefix"])
+    
+    if choice:
+        try_to_buy(data, choice)
 
 def try_to_buy(data, item_name):
     """Attempt to buy an item."""
