@@ -24,6 +24,16 @@ except NameError:
     pass
 
 
+# ========== タイプライター表示関数（追加） ==========
+def tw(text, delay=0.03):
+    """タイプライター風に一文字ずつ表示する"""
+    for char in text:
+        sys.stdout.write(char)
+        sys.stdout.flush()
+        time.sleep(delay)
+    print()  # 最後に改行
+
+
 def store_data(data):
     """Purrsist the data."""
     data_file = os.getcwd() + '/var/data.json'
@@ -93,6 +103,7 @@ def check_status(data):
     """Check status of items in yard."""
     yard.list_yard_items(data)
 
+
 def bestow_treasures(data, prev_start):
     """Randomly decide whether or not to give the user a treasure."""
     if not prev_start:
@@ -114,15 +125,17 @@ def bestow_treasures(data, prev_start):
     data["cats"][giver["name"]]["given_treasure"] = True
     data["pending_treasures"].append([giver["name"], giver["treasure"]])
 
+
 def recieve_treasures(data):
     if len(data["pending_treasures"]) == 0:
         return
     temp = "{.TREASURE}[TREASURE]{.ENDC}".format(
             printer.PColors, printer.PColors)
+    # ========== 修正：printer.p -> tw ==========
     for treasure in data["pending_treasures"]:
-        printer.p(temp, "{0} gave you a treasure! {1}!!!".format(
-                 treasure[0], treasure[1]))
+        tw("{0} gave you a treasure! {1}!!!".format(treasure[0], treasure[1]))
     data["pending_treasures"] = []
+
 
 def check_treasures(data):
     temp = "{.TREASURE}[TREASURE]{.ENDC}".format(
@@ -135,6 +148,7 @@ def check_treasures(data):
     else:
         printer.p(temp, "Aww, no cats have given you treasures yet.. But don't worry! Keep trying and I'm sure they will!!")
 
+
 def collect_money(data):
     """Collect money left by cats."""
     if len(data["pending_money"]) == 0:
@@ -145,27 +159,25 @@ def collect_money(data):
     for i in range(len(data["pending_money"])):
         money = data["pending_money"].pop()
         currency = money[2]
-        printer.p("{.GREEN}[$$$$$$]{.ENDC}".format(
-            printer.PColors,
-            printer.PColors), "Yes! {0} left you {1}{2} fish!".format(
+        # ========== 修正：printer.p -> tw ==========
+        tw("Yes! {0} left you {1}{2} fish!".format(
             money[0], str(money[1]), " gold" if currency == "g" else " silver"))
         data[currency + "_fish"] += money[1]
 
 
 def print_help(data):
     """Print the game help."""
-    temp = "{.HELP}[Help!]{.ENDC}".format(
-        printer.PColors, printer.PColors)
-    printer.p(temp, "Welcome to Neko Atsume!")
-    printer.p(temp, "In this game cats come to visit you and you feed them")
-    printer.p(temp, "it's pretty cool, so you should play more")
+    # ========== 修正：3箇所すべて printer.p -> tw ==========
+    tw("Welcome to Neko Atsume!")
+    tw("In this game cats come to visit you and you feed them")
+    tw("it's pretty cool, so you should play more")
 
 
 def quit(data):
     """Quit the game."""
     data["want_to_play"] = False
-    printer.p("{.BLUE}[Goodbye!]{.ENDC}".format(
-        printer.PColors, printer.PColors), "Saving game! See you later!")
+    # ========== 修正：printer.p -> tw ==========
+    tw("Saving game! See you later!")
     prep_data_on_close(data)
 
 
@@ -227,6 +239,7 @@ def main(data):
             continue
         else:
             printer.invalid(data["prefix"])
+
 
 def run():
     try:
