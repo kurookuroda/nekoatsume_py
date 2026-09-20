@@ -1,0 +1,488 @@
+diff --git a/nekoatsume/lib/buy_menu.py b/nekoatsume/lib/buy_menu.py
+index ee8efb2..cceddaf 100644
+--- a/nekoatsume/lib/buy_menu.py
++++ b/nekoatsume/lib/buy_menu.py
+@@ -5,7 +5,6 @@ This module controls the item shop and related transactions.
+ """
+ 
+ from lib import printer
+-DEMARCATION = 15
+ 
+ try:
+     input = raw_input
+@@ -17,14 +16,15 @@ def get_choice(options, prompt, prefix):
+     """
+     番号または名前で選択を受け付ける共通関数。
+     options: [(key, display_name), ...] のリスト
++             (key, display_name, 別名...) のように、追加で受け付ける入力を並べてもよい
+     戻り値: 選ばれた key、または None（キャンセル/無効）
+     """
+     if len(options) == 0:
+         printer.warn(prefix, "選べるものがありません!")
+         return None
+ 
+-    for i, (key, name) in enumerate(options, 1):
+-        printer.shop(prefix, "{0}. {1}".format(i, name))
++    for i, option in enumerate(options, 1):
++        printer.shop(prefix, "{0}. {1}".format(i, option[1]))
+     
+     raw = input("{.SHOP}{}{.ENDC} {} ".format(
+         printer.PColors, prefix, printer.PColors, prompt))
+@@ -41,8 +41,10 @@ def get_choice(options, prompt, prefix):
+     
+     raw_norm = raw.strip().lower()
+     
+-    for key, name in options:
+-        if raw_norm == key.lower() or raw_norm == name.lower():
++    for option in options:
++        key, name, aliases = option[0], option[1], option[2:]
++        candidates = [key.lower(), name.lower()] + [a.lower() for a in aliases]
++        if raw_norm in candidates:
+             return key
+     
+     printer.warn(prefix, "その選択肢はわかりませんでした")
+@@ -87,9 +89,9 @@ def menu(data):
+ def list_items(data):
+     """Display list of available items."""
+     catalog = [item for item in data["items"].values()
+-               if item["attributes"] == [] and item["size"] < DEMARCATION]
++               if item["attributes"] == [] and item["kind"] == "toy"]
+     food = [item for item in data["items"].values()
+-            if item["attributes"] == [] and item["size"] > DEMARCATION]
++            if item["attributes"] == [] and item["kind"] == "food"]
+     owned = [item for item in data["items"].values()
+              if "owned" in item["attributes"]]
+     for item in catalog:
+@@ -124,7 +126,7 @@ def ex_item(data):
+     items = []
+     for key, item in data["items"].items():
+         display = "{0} ({1})".format(item["name"], printer.price(item["cost"], item["currency"]))
+-        items.append((key, display))
++        items.append((key, display, item["name"]))
+     
+     choice = get_choice(items, "どれを調べますか?", data["prefix"])
+     
+@@ -139,7 +141,7 @@ def buy_item(data):
+     for key, item in data["items"].items():
+         if item["attributes"] == []:
+             display = "{0} ({1})".format(item["name"], printer.price(item["cost"], item["currency"]))
+-            buyable_items.append((key, display))
++            buyable_items.append((key, display, item["name"]))
+     
+     if len(buyable_items) == 0:
+         printer.warn(data["prefix"], "買えるものがありません!")
+@@ -150,9 +152,9 @@ def buy_item(data):
+     if choice:
+         try_to_buy(data, choice)
+ 
+-def try_to_buy(data, item_name):
++def try_to_buy(data, item_id):
+     """Attempt to buy an item."""
+-    item = data["items"][item_name]
++    item = data["items"][item_id]
+     currency = item["currency"] + "_fish"
+     money = data[currency]
+     cost = item["cost"]
+@@ -162,8 +164,8 @@ def try_to_buy(data, item_name):
+         return
+     else:
+         data[currency] = data[currency] - cost
+-        if item["size"] < 6:
+-            data["items"][item_name]["attributes"] = ["owned"]
++        if item["kind"] == "toy":
++            data["items"][item_id]["attributes"] = ["owned"]
+         else:
+             data["owned_food"].append(item.copy())
+         printer.success(data["prefix"], "まいど! すばらしい選択です!")
+diff --git a/nekoatsume/lib/data_constructor.py b/nekoatsume/lib/data_constructor.py
+index dee2861..e97efa4 100644
+--- a/nekoatsume/lib/data_constructor.py
++++ b/nekoatsume/lib/data_constructor.py
+@@ -32,8 +32,16 @@ def build_data():
+     store_data(data)
+ 
+ 
+-def make_item(name, cost, cur, size, desc):
+-    return {"cost": cost,
++def make_item(item_id, name, cost, cur, size, kind, desc):
++    """アイテムを1つ作る。
++
++    item_id: 内部ID(セーブデータのキー。例: "rubber_ball")。表示名を変えてもセーブは壊れない
++    name:    表示名(日本語)
++    kind:    "toy"(おもちゃ)または "food"(エサ)。おもちゃ/エサの判定は size ではなくこれで行う
++    size:    toy なら庭で使うマス数(=同時に遊べる猫の数)、food なら持続時間(分)
++    """
++    return {"id": item_id,
++            "cost": cost,
+             "currency": cur,
+             "description": desc,
+             "attributes": [],
+@@ -41,6 +49,7 @@ def make_item(name, cost, cur, size, desc):
+             "occupied": False,
+             "in_yard": False,
+             "size": size,
++            "kind": kind,
+             "name": name}
+ 
+ 
+@@ -52,40 +61,41 @@ def make_item(name, cost, cur, size, desc):
+ #       climbable = ["is on top of", "is clawing at", "is jumping off of"]
+ #       then add that to the end of each item
+ #
+-# 日本語化メモ: アイテム名はそのまま辞書のキーにもなる。名前を変えると
+-# 既存の var/data.json とは互換性がなくなるので、その場合は data.json を削除して新規開始すること。
++# 内部ID(セーブデータのキー)と表示名は別物。表示名は自由に変えてよいが、IDは変えないこと。
++# IDを変えると既存の var/data.json と対応が取れなくなる。
+ def build_items(data):
+     items = [
+-        ("ゴムボール", 5, "s", 1, "小さな明るいオレンジ色のゴムボール。ふにふにで、ピコピコ鳴るよ!"),
+-        ("キラキラボール", 5, "g", 1, "きらめくラメが入った、小さな透明のゴムボール!"),
+-        ("毛糸玉", 10, "s", 1, "赤い毛糸玉だよ!"),
+-        ("高級毛糸玉", 15, "g", 1, "赤・青・緑に銀色の糸がきらめく、高級な毛糸玉!"),
+-        ("テニスボール", 25, "s", 1, "毛羽立った鮮やかな黄色のテニスボール!"),
+-        ("紙袋", 20, "s", 1, "スーパーの紙袋。ガサガサいい音がするよ!"),
+-        ("爪とぎポール", 5, "g", 1, "猫がバリバリ爪をとげる、いい感じのポール!"),
+-        ("高級爪とぎポール", 15, "g", 1, "硬い木と合成皮革でできた、デラックスな爪とぎポール!"),
+-        ("金魚鉢", 10, "g", 1, "かわいい金魚が泳ぐ小さな金魚鉢!"),
+-        ("小型キャットハウス", 75, "s", 3, "少しだけカーペット張りの小さなキャットハウス。3匹まで入れるよ!"),
+-        ("中型キャットハウス", 150, "s", 5, "全面カーペット張りの中くらいのキャットハウス。5匹まで入れるよ!"),
+-        ("大型キャットハウス", 50, "g", 7, "高級ベルベル絨毯に手縫いの仕上げ、7匹まで入れる大きなキャットハウス!"),
+-        ("マタタビの袋", 7, "g", 1, "小さなマタタビの袋。においで猫が大興奮!"),
+-        ("無地のクッション", 30, "s", 1, "青くてやわらかい、小さな無地のクッション!"),
+-        ("絞り染めのクッション", 15, "g", 1, "絞り染めのフリースでできた、ふかふかの厚いクッション!"),
+-        ("プラスチックのバケツ", 20, "s", 1, "白い取っ手のついた小さな緑のバケツ。バケツがあるぞ!"),
+-        ("シリアルの箱", 15, "s", 1, "「シナモンとろけるゴロゴロ」の空き箱!"),
+-        ("果物の箱", 75, "s", 1, "小さな段ボールの果物箱。入れそうなら、入っちゃう!"),
+-        ("大きな箱", 30, "g", 4, "もとは家電が入っていた大きな段ボール箱。猫が4匹まで入れるよ!"),
+-        ("蝶々のおもちゃ", 15, "g", 1, "長い棒の先の糸に蝶々がぶら下がった、かわいいおもちゃ。ひらひら楽しい!"),
+-        ("ロボットレーザーポインター", 125, "g", 1, "レーザーポインターを持った小さなロボットアーム。みんな大好き!"),
+-        ("虹色の傘", 25, "g", 5, "虹色もようの大きな傘。猫が5匹まで入れるよ!"),
+-        ("無地の傘", 250, "s", 4, "明るい黄色の大きな無地の傘。猫が4匹まで入れるよ!"),
+-        ("カエルのぬいぐるみ", 75, "s", 1, "ぎゅっとすると鳴く、緑のかわいいカエルのぬいぐるみ!"),
+-        ("ドライフード", 10, "s", 300, "ごく普通のドライフード。カリカリでシンプルな味。"),
+-        ("ウェットフード缶", 2, "g", 300, "ごく普通のウェットフード。においが強烈!"),
+-        ("高級フード缶", 5, "g", 300, "職人が手づくりした、フェアトレードのオーガニック猫ごはん。んー、おいしい!"),
++        # (id, 表示名, 値段, 通貨, size, kind, 説明)
++        ("rubber_ball", "ゴムボール", 5, "s", 1, "toy", "小さな明るいオレンジ色のゴムボール。ふにふにで、ピコピコ鳴るよ!"),
++        ("sparkle_ball", "キラキラボール", 5, "g", 1, "toy", "きらめくラメが入った、小さな透明のゴムボール!"),
++        ("yarn_ball", "毛糸玉", 10, "s", 1, "toy", "赤い毛糸玉だよ!"),
++        ("fancy_yarn_ball", "高級毛糸玉", 15, "g", 1, "toy", "赤・青・緑に銀色の糸がきらめく、高級な毛糸玉!"),
++        ("tennis_ball", "テニスボール", 25, "s", 1, "toy", "毛羽立った鮮やかな黄色のテニスボール!"),
++        ("paper_bag", "紙袋", 20, "s", 1, "toy", "スーパーの紙袋。ガサガサいい音がするよ!"),
++        ("scratching_post", "爪とぎポール", 5, "g", 1, "toy", "猫がバリバリ爪をとげる、いい感じのポール!"),
++        ("fancy_scratching_post", "高級爪とぎポール", 15, "g", 1, "toy", "硬い木と合成皮革でできた、デラックスな爪とぎポール!"),
++        ("fish_bowl", "金魚鉢", 10, "g", 1, "toy", "かわいい金魚が泳ぐ小さな金魚鉢!"),
++        ("small_cat_house", "小型キャットハウス", 75, "s", 3, "toy", "少しだけカーペット張りの小さなキャットハウス。3匹まで入れるよ!"),
++        ("medium_cat_house", "中型キャットハウス", 150, "s", 5, "toy", "全面カーペット張りの中くらいのキャットハウス。5匹まで入れるよ!"),
++        ("large_cat_house", "大型キャットハウス", 50, "g", 6, "toy", "高級ベルベル絨毯に手縫いの仕上げ、6匹まで入れる大きなキャットハウス!"),
++        ("catnip_bag", "マタタビの袋", 7, "g", 1, "toy", "小さなマタタビの袋。においで猫が大興奮!"),
++        ("plain_cushion", "無地のクッション", 30, "s", 1, "toy", "青くてやわらかい、小さな無地のクッション!"),
++        ("tie_dye_cushion", "絞り染めのクッション", 15, "g", 1, "toy", "絞り染めのフリースでできた、ふかふかの厚いクッション!"),
++        ("plastic_bucket", "プラスチックのバケツ", 20, "s", 1, "toy", "白い取っ手のついた小さな緑のバケツ。バケツがあるぞ!"),
++        ("cereal_box", "シリアルの箱", 15, "s", 1, "toy", "「シナモンとろけるゴロゴロ」の空き箱!"),
++        ("fruit_box", "果物の箱", 75, "s", 1, "toy", "小さな段ボールの果物箱。入れそうなら、入っちゃう!"),
++        ("big_box", "大きな箱", 30, "g", 4, "toy", "もとは家電が入っていた大きな段ボール箱。猫が4匹まで入れるよ!"),
++        ("butterfly_toy", "蝶々のおもちゃ", 15, "g", 1, "toy", "長い棒の先の糸に蝶々がぶら下がった、かわいいおもちゃ。ひらひら楽しい!"),
++        ("robot_laser_pointer", "ロボットレーザーポインター", 125, "g", 1, "toy", "レーザーポインターを持った小さなロボットアーム。みんな大好き!"),
++        ("rainbow_umbrella", "虹色の傘", 25, "g", 5, "toy", "虹色もようの大きな傘。猫が5匹まで入れるよ!"),
++        ("plain_umbrella", "無地の傘", 250, "s", 4, "toy", "明るい黄色の大きな無地の傘。猫が4匹まで入れるよ!"),
++        ("frog_plush", "カエルのぬいぐるみ", 75, "s", 1, "toy", "ぎゅっとすると鳴く、緑のかわいいカエルのぬいぐるみ!"),
++        ("dry_food", "ドライフード", 10, "s", 300, "food", "ごく普通のドライフード。カリカリでシンプルな味。"),
++        ("wet_food_can", "ウェットフード缶", 2, "g", 300, "food", "ごく普通のウェットフード。においが強烈!"),
++        ("fancy_food_can", "高級フード缶", 5, "g", 300, "food", "職人が手づくりした、フェアトレードのオーガニック猫ごはん。んー、おいしい!"),
+     ]
+-    for name, cost, cur, size, desc in items:
+-        data["items"][name] = make_item(name, cost, cur, size, desc)
++    for item_id, name, cost, cur, size, kind, desc in items:
++        data["items"][item_id] = make_item(item_id, name, cost, cur, size, kind, desc)
+ 
+ 
+ def make_cat(name, desc, treasure, mod, time_limit=30, entry_chance=0.1, exclusive=False, fav_toy="", strength=5):
+@@ -116,3 +126,74 @@ def build_cats(data):
+     data["cats"]["ピーブルズ"] = make_cat("ピーブルズ", "ピーブルズは青い目の白黒の短毛猫。デスメタルとマタタビの山が好き", "べっ甲のギターピック", 0.1)
+     data["cats"]["タラワ"] = make_cat("タラワ", "タラワは白い筋の入ったグレーの長毛で、灰色の目の猫。のんびりするのと、鳥を追いかけるのが好き", "アオカケスの羽根", 0.1, strength=6)
+     data["cats"]["フェリックス"] = make_cat("フェリックス", "フェリックスはオレンジと白の短毛のトラ猫で、黄色い目。とてもおだやかで、一日中ほとんど瞑想している", "仏像のお香立て", 0.1)
++
++
++# ---------------------------------------------------------------------------
++# 古いセーブデータの移行
++# ---------------------------------------------------------------------------
++def migrate_data(data):
++    """古いセーブデータを現在の形式にそろえる(何度呼んでも結果は同じ)。
++
++    - アイテムのキーを、表示名(日本語)から内部IDに変える
++    - 値段・size・kind・説明などの「定義」を現在のカタログに合わせる
++      (大型キャットハウスの size 7 → 6 もここで既存セーブに反映される)
++    - 遊んでいる猫・庭の中身など「状態」は、そのまま引き継ぐ
++    - 猫が持つ on_toy / fav_toy の参照を、表示名からIDに置き換える
++    - 旧版では大型キャットハウスが置けず、エサ扱いで買われていた。
++      エサとして持っていたおもちゃは、おもちゃとして持ち物に戻す
++    """
++    catalog = {}
++    build_items({"items": catalog})
++    ids_by_name = {item["name"]: item_id for item_id, item in catalog.items()}
++
++    def to_id(ref):
++        """表示名またはIDを、IDにして返す(どちらでもなければそのまま)。"""
++        if ref in catalog:
++            return ref
++        return ids_by_name.get(ref, ref)
++
++    def refresh(entry, fresh):
++        """定義に当たる項目だけ最新にする(occupant などの状態には触らない)。"""
++        for key in ("id", "name", "cost", "currency", "description", "size", "kind"):
++            entry[key] = fresh[key]
++
++    # items: キーをIDにそろえる
++    old_items = data.get("items", {})
++    items = {}
++    for item_id, fresh in catalog.items():
++        old = old_items.get(item_id) or old_items.get(fresh["name"]) or {}
++        merged = dict(fresh)
++        for key in ("attributes", "occupant", "occupied", "in_yard"):
++            if key in old:
++                merged[key] = old[key]
++        items[item_id] = merged
++    data["items"] = items
++
++    # yard: 庭に置いてあるアイテム
++    for entry in data.get("yard", []):
++        item_id = to_id(entry.get("id") or entry.get("name"))
++        entry["id"] = item_id
++        if item_id in catalog:
++            refresh(entry, catalog[item_id])
++
++    # owned_food: 持っているエサ
++    foods = []
++    for entry in data.get("owned_food", []):
++        item_id = to_id(entry.get("id") or entry.get("name"))
++        fresh = catalog.get(item_id)
++        if fresh is None:
++            foods.append(entry)
++        elif fresh["kind"] == "toy":
++            items[item_id]["attributes"] = ["owned"]
++        else:
++            refresh(entry, fresh)
++            foods.append(entry)
++    data["owned_food"] = foods
++
++    # cats: おもちゃへの参照をIDにする
++    for cat in data.get("cats", {}).values():
++        if isinstance(cat, dict):
++            for key in ("on_toy", "fav_toy"):
++                if cat.get(key):
++                    cat[key] = to_id(cat[key])
++    return data
+diff --git a/nekoatsume/lib/display.py b/nekoatsume/lib/display.py
+index f3e4c41..2c2461a 100644
+--- a/nekoatsume/lib/display.py
++++ b/nekoatsume/lib/display.py
+@@ -41,16 +41,16 @@ def store_data(data):
+         del data["completer"]
+     
+     # ========== 追加：yardとitemsの整合性を同期 ==========
+-    # yardにあるアイテム名を集める
+-    yard_item_names = set()
++    # yardにあるアイテムのIDを集める
++    yard_item_ids = set()
+     for item in data.get("yard", []):
+         if isinstance(item, dict):
+-            yard_item_names.add(item.get("name", ""))
++            yard_item_ids.add(item.get("id", ""))
+     
+     # items側のin_yardをyardの実態に合わせる
+     for item in data.get("items", {}).values():
+         if isinstance(item, dict):
+-            item["in_yard"] = item.get("name", "") in yard_item_names
++            item["in_yard"] = item.get("id", "") in yard_item_ids
+     
+     with open(data_file, 'w') as f:
+         json.dump(data, f)
+@@ -258,6 +258,7 @@ def run():
+         data = []
+         try:
+             data = load_data()
++            data_constructor.migrate_data(data)  # 旧セーブ(キーが表示名)をID形式にそろえる
+             data = update.update(data)
+         except IOError:
+             data_constructor.build_data()
+diff --git a/nekoatsume/lib/update.py b/nekoatsume/lib/update.py
+index 1816ba3..ccb33c3 100644
+--- a/nekoatsume/lib/update.py
++++ b/nekoatsume/lib/update.py
+@@ -54,7 +54,7 @@ def pick_toy(data, cat):
+     yard_toys = [toy for toy in data["yard"]]
+     if len(yard_toys) == 0:
+         return None
+-    fav_toy = [toy for toy in yard_toys if toy["name"] == cat["fav_toy"]]
++    fav_toy = [toy for toy in yard_toys if toy["id"] == cat["fav_toy"]]
+     if cat["exclusive"]:
+         if fav_toy:
+             return fav_toy[0]
+@@ -68,7 +68,7 @@ def is_open(toy):
+ def join_toy(data, cat, toy):
+     toy["occupied"] = True
+     toy["occupant"].append(cat["name"])
+-    cat["on_toy"] = toy["name"]
++    cat["on_toy"] = toy["id"]
+     cat["in_yard"] = True
+     if cat["total_time_in_yard"] > 3000 and not cat["given_treasure"]:
+         cat["given_treasure"] = True
+@@ -99,25 +99,25 @@ def update_yard_cats(data):
+ 
+ def fix_cat_yard_consistency(data):
+     """猫の on_toy / in_yard と庭の実際のアイテムを同期させる"""
+-    # 庭にあるアイテム名を集める
+-    yard_item_names = set()
++    # 庭にあるアイテムのIDを集める
++    yard_item_ids = set()
+     for item in data.get("yard", []):
+         if isinstance(item, dict):
+-            yard_item_names.add(item.get("name", ""))
++            yard_item_ids.add(item.get("id", ""))
+     
+     # 各猫の状態をチェック
+     for cat_name, cat in data.get("cats", {}).items():
+         if not isinstance(cat, dict):
+             continue
+         if cat.get("in_yard", False):
+-            toy_name = cat.get("on_toy", "")
++            toy_id = cat.get("on_toy", "")
+             # おもちゃが庭にない場合、猫を庭から追い出す
+-            if toy_name and toy_name not in yard_item_names:
++            if toy_id and toy_id not in yard_item_ids:
+                 cat["in_yard"] = False
+                 cat["on_toy"] = ""
+                 # 該当アイテムの occupant からも削除（念のため）
+                 for item in data.get("yard", []):
+-                    if isinstance(item, dict) and toy_name in item.get("name", ""):
++                    if isinstance(item, dict) and item.get("id") == toy_id:
+                         occ = item.get("occupant", [])
+                         if cat_name in occ:
+                             occ.remove(cat_name)
+@@ -144,7 +144,7 @@ def pay_up(data, cat):
+ 
+ def free_up_toy_cat(data, cat):
+     """Cat stops playing with toy."""
+-    toy = [toy for toy in data["yard"] if toy["name"] == cat["on_toy"]][0]
++    toy = [toy for toy in data["yard"] if toy["id"] == cat["on_toy"]][0]
+     remove_cat(data, cat, toy)
+     if len(toy["occupant"]) == 0:
+         toy["occupied"] = False
+@@ -162,7 +162,7 @@ def new_cats(data):
+             toy = open_toys.pop(0)
+             toy["occupied"] = True
+             toy["occupant"].append(cat["name"])
+-            cat["on_toy"] = toy["name"]
++            cat["on_toy"] = toy["id"]
+             cat["in_yard"] = True
+             if cat["total_time_in_yard"] > 3000 and not cat["given_treasure"]:
+                 cat["given_treasure"] = True
+diff --git a/nekoatsume/lib/yard.py b/nekoatsume/lib/yard.py
+index 0b1f5cd..bda8c6d 100644
+--- a/nekoatsume/lib/yard.py
++++ b/nekoatsume/lib/yard.py
+@@ -5,6 +5,7 @@ This module handles the placement of food and toys in the yard.
+ """
+ 
+ from lib import printer
++from lib import update
+ 
+ try:
+     input = raw_input
+@@ -157,8 +158,8 @@ def place(data):
+     
+     placable_items = []
+     for item in items_list:
+-        if item["size"] < 15:
+-            placable_items.append((item["name"], item["name"]))
++        if item["kind"] == "toy":
++            placable_items.append((item["id"], item["name"]))
+     
+     if len(placable_items) == 0:
+         printer.warn(data["prefix"], "置けるアイテムがありません!")
+@@ -167,13 +168,13 @@ def place(data):
+     choice = get_choice(placable_items, "どのアイテムを置きますか?", data["prefix"])
+     
+     if choice:
+-        item = next(item for item in items_list if item["name"] == choice)
++        item = next(item for item in items_list if item["id"] == choice)
+         try_to_place(data, item)
+ 
+ 
+ def try_to_place(data, item):
+     """Attempt item placement in yard."""
+-    if sum([toy["size"] for toy in data["yard"]]) + item["size"] < data["space"]:
++    if sum([toy["size"] for toy in data["yard"]]) + item["size"] <= data["space"]:
+         data["yard"].append(item)
+         item["in_yard"] = True
+         printer.success(data["prefix"], "いいね! 庭には今、{0}があります".format("、".join([toy["name"] for toy in data["yard"]])))
+@@ -184,7 +185,7 @@ def try_to_place(data, item):
+ 
+ def offer_replace(data, item):
+     """Replace an existing item in yard."""
+-    yard_items = [(toy["name"], toy["name"]) for toy in data["yard"]]
++    yard_items = [(toy["id"], toy["name"]) for toy in data["yard"]]
+     
+     choice = get_choice(yard_items, "どのアイテムと入れ替えますか?", data["prefix"])
+     
+@@ -193,15 +194,26 @@ def offer_replace(data, item):
+         try_to_place(data, item)
+ 
+ 
+-def remove_from_yard(data, item_name):
+-    """Remove item from yard."""
+-    to_remove = [item for item in data["yard"] if item["name"] == item_name]
++def remove_from_yard(data, item_id):
++    """Remove item from yard.
++
++    そのおもちゃで遊んでいた猫は、さかなを置いて帰る。
++    """
++    to_remove = [item for item in data["yard"] if item["id"] == item_id]
+     for item in to_remove:
++        for cat_name in list(item["occupant"]):
++            cat = data["cats"][cat_name]
++            update.remove_cat(data, cat, item)  # さかなを pending_money に積み、猫を帰す
++            _, amount, currency = data["pending_money"][-1]
++            printer.success(data["prefix"], "{0}は{1}から降りて、{2}を置いて帰りました".format(
++                cat_name, item["name"], printer.fish_text(amount, currency)))
++        item["occupied"] = False
+         data["yard"].remove(item)
+         # items側も同期（二重保険）
+-        for master_item in data["items"].values():
+-            if master_item.get("name") == item_name:
+-                master_item["in_yard"] = False
++        master_item = data["items"].get(item_id)
++        if master_item is not None:
++            master_item["in_yard"] = False
++
+ 
+ def check_food(data):
+     """Check food in yard."""
+@@ -229,9 +241,26 @@ def food(data):
+     
+     if choice:
+         idx = int(choice)
++        if data["food_remaining"] > 0 and not confirm_replace_food(data):
++            printer.warn(data["prefix"], "エサの置き換えをやめました")
++            return
+         put_food_in_yard(data, idx)
+ 
+ 
++def confirm(prompt, prefix):
++    """はい/いいえの確認。y / yes / はい のときだけ True(ENTERだけなら False)。"""
++    raw = input("{.YARD}{}{.ENDC} {} ".format(
++        printer.PColors, prefix, printer.PColors, prompt))
++    return raw.strip().lower() in ("y", "yes", "ｙ", "はい")
++
++
++def confirm_replace_food(data):
++    """庭にエサが残っているとき、置き換えると残りが捨てられることを確認する。"""
++    printer.warn(data["prefix"], "庭には今、{0}が残り{1}分あります。置き換えると、残りは捨てられます!".format(
++        data["food"], data["food_remaining"]))
++    return confirm("置き換えますか?(y/N)", data["prefix"])
++
++
+ def put_food_in_yard(data, arr_idx):
+     """Place food in yard."""
+     food = data["owned_food"].pop(arr_idx)
