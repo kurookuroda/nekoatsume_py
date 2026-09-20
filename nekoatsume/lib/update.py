@@ -9,6 +9,8 @@ import random
 from .query import cats_in_yard, cats_not_in_yard
 
 def update(data):
+    # === 追加：データ整合性を修復 ===
+    fix_cat_yard_consistency(data)
     """Update game data."""
     prev_start = data["start"]
     time_left = time.time() - data["start"]
@@ -95,6 +97,32 @@ def update_yard_cats(data):
         if time_to_leave(cat):
             free_up_toy_cat(data, cat)
 
+def fix_cat_yard_consistency(data):
+    """猫の on_toy / in_yard と庭の実際のアイテムを同期させる"""
+    # 庭にあるアイテム名を集める
+    yard_item_names = set()
+    for item in data.get("yard", []):
+        if isinstance(item, dict):
+            yard_item_names.add(item.get("name", ""))
+    
+    # 各猫の状態をチェック
+    for cat_name, cat in data.get("cats", {}).items():
+        if not isinstance(cat, dict):
+            continue
+        if cat.get("in_yard", False):
+            toy_name = cat.get("on_toy", "")
+            # おもちゃが庭にない場合、猫を庭から追い出す
+            if toy_name and toy_name not in yard_item_names:
+                cat["in_yard"] = False
+                cat["on_toy"] = ""
+                # 該当アイテムの occupant からも削除（念のため）
+                for item in data.get("yard", []):
+                    if isinstance(item, dict) and toy_name in item.get("name", ""):
+                        occ = item.get("occupant", [])
+                        if cat_name in occ:
+                            occ.remove(cat_name)
+                        if len(occ) == 0:
+                            item["occupied"] = False
 
 def time_to_leave(cat):
     """Decide when it's time for cat to leave yard."""
