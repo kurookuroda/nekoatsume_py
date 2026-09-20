@@ -202,8 +202,10 @@ def remove_from_yard(data, item_name):
     to_remove = [item for item in data["yard"] if item["name"] == item_name]
     for item in to_remove:
         data["yard"].remove(item)
-        item["in_yard"] = False
-
+        # items側も同期（二重保険）
+        for master_item in data["items"].values():
+            if master_item.get("name") == item_name:
+                master_item["in_yard"] = False
 
 def check_food(data):
     """Check food in yard."""
