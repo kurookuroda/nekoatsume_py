@@ -39,9 +39,21 @@ def store_data(data):
     data_file = os.getcwd() + '/var/data.json'
     if data.get("completer"):
         del data["completer"]
+    
+    # ========== 追加：yardとitemsの整合性を同期 ==========
+    # yardにあるアイテム名を集める
+    yard_item_names = set()
+    for item in data.get("yard", []):
+        if isinstance(item, dict):
+            yard_item_names.add(item.get("name", ""))
+    
+    # items側のin_yardをyardの実態に合わせる
+    for item in data.get("items", {}).values():
+        if isinstance(item, dict):
+            item["in_yard"] = item.get("name", "") in yard_item_names
+    
     with open(data_file, 'w') as f:
         json.dump(data, f)
-
 
 def load_data():
     """Load the data."""
