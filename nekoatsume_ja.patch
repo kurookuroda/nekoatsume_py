@@ -1,0 +1,698 @@
+diff --git a/nekoatsume/lib/buy_menu.py b/nekoatsume/lib/buy_menu.py
+index 8c8d62f..ee8efb2 100644
+--- a/nekoatsume/lib/buy_menu.py
++++ b/nekoatsume/lib/buy_menu.py
+@@ -20,7 +20,7 @@ def get_choice(options, prompt, prefix):
+     戻り値: 選ばれた key、または None（キャンセル/無効）
+     """
+     if len(options) == 0:
+-        printer.warn(prefix, "No options available!")
++        printer.warn(prefix, "選べるものがありません!")
+         return None
+ 
+     for i, (key, name) in enumerate(options, 1):
+@@ -40,38 +40,35 @@ def get_choice(options, prompt, prefix):
+         pass
+     
+     raw_norm = raw.strip().lower()
+-    raw_norm = raw_norm.lstrip("a ").lstrip("an ").lstrip("the ")
+     
+     for key, name in options:
+-        if raw_norm == key.lower():
+-            return key
+-        name_norm = name.lower().lstrip("a ").lstrip("an ").lstrip("the ")
+-        if raw_norm == name_norm:
++        if raw_norm == key.lower() or raw_norm == name.lower():
+             return key
+     
+-    printer.warn(prefix, "I'm sorry I didn't recognize that option")
++    printer.warn(prefix, "その選択肢はわかりませんでした")
+     return None
+ 
+ 
+ def menu(data):
+     """Display item shop menu."""
+-    data["prefix"] = "[Item Shop]"
++    data["prefix"] = printer.PREFIX_SHOP
+     printer.shop(
+-        data["prefix"], "you have {0} silver fish and {1} gold fish to spend"
+-        .format(data["s_fish"], data["g_fish"]))
++        data["prefix"], "所持金: {0}、{1}"
++        .format(printer.fish_text(data["s_fish"], "s"),
++                printer.fish_text(data["g_fish"], "g")))
+     list_items(data)
+     data["want_to_buy"] = True
+     
+     actions = [
+-        ("buy", "Buy"),
+-        ("examine", "Examine"),
+-        ("check wallet", "Check wallet"),
+-        ("list items", "List items"),
+-        ("leave shop", "Leave shop"),
++        ("buy", "買う"),
++        ("examine", "調べる"),
++        ("check wallet", "財布を見る"),
++        ("list items", "商品一覧"),
++        ("leave shop", "ショップを出る"),
+     ]
+     
+     while data["want_to_buy"]:
+-        choice = get_choice(actions, "What do you want to do?", data["prefix"])
++        choice = get_choice(actions, "どうしますか?", data["prefix"])
+         
+         if choice is None:
+             continue
+@@ -97,16 +94,16 @@ def list_items(data):
+              if "owned" in item["attributes"]]
+     for item in catalog:
+         printer.shop(
+-            data["prefix"], "{0} You can buy a {1} for {2}{3}".format(
+-                "(toy)", item["name"], item["cost"], item["currency"]))
++            data["prefix"], "{0} {1}: {2}".format(
++                "(おもちゃ)", item["name"], printer.price(item["cost"], item["currency"])))
+     for item in food:
+         printer.shop(
+-            data["prefix"], "{0} You can buy a {1} for {2}{3}".format(
+-                "(food)", item["name"], item["cost"], item["currency"]))
++            data["prefix"], "{0} {1}: {2}".format(
++                "(エサ)", item["name"], printer.price(item["cost"], item["currency"])))
+     if len(owned) > 0:
+         printer.shop(
+-            data["prefix"], "you already own a {0}".format(
+-                ", and a ".join([item["name"] for item in owned])))
++            data["prefix"], "持っているおもちゃ: {0}".format(
++                "、".join([item["name"] for item in owned])))
+ 
+ 
+ def exit_buy(data):
+@@ -117,22 +114,23 @@ def exit_buy(data):
+ def wallet(data):
+     """Show wallet contents."""
+     printer.shop(
+-        data["prefix"], "you have {0} silver fish and {1} gold fish to spend"
+-        .format(data["s_fish"], data["g_fish"]))
++        data["prefix"], "所持金: {0}、{1}"
++        .format(printer.fish_text(data["s_fish"], "s"),
++                printer.fish_text(data["g_fish"], "g")))
+ 
+ 
+ def ex_item(data):
+     """Examine item."""
+     items = []
+     for key, item in data["items"].items():
+-        display = "{0} ({1}{2})".format(item["name"], item["cost"], item["currency"])
++        display = "{0} ({1})".format(item["name"], printer.price(item["cost"], item["currency"]))
+         items.append((key, display))
+     
+-    choice = get_choice(items, "Which would you like to examine?", data["prefix"])
++    choice = get_choice(items, "どれを調べますか?", data["prefix"])
+     
+     if choice:
+         item = data["items"][choice]
+-        printer.shop(data["prefix"], item.get("description", "No description available."))
++        printer.shop(data["prefix"], item.get("description", "説明はありません。"))
+ 
+ 
+ def buy_item(data):
+@@ -140,14 +138,14 @@ def buy_item(data):
+     buyable_items = []
+     for key, item in data["items"].items():
+         if item["attributes"] == []:
+-            display = "{0} ({1}{2})".format(item["name"], item["cost"], item["currency"])
++            display = "{0} ({1})".format(item["name"], printer.price(item["cost"], item["currency"]))
+             buyable_items.append((key, display))
+     
+     if len(buyable_items) == 0:
+-        printer.warn(data["prefix"], "Nothing left to buy!")
++        printer.warn(data["prefix"], "買えるものがありません!")
+         return
+     
+-    choice = get_choice(buyable_items, "What item would you like to buy?", data["prefix"])
++    choice = get_choice(buyable_items, "何を買いますか?", data["prefix"])
+     
+     if choice:
+         try_to_buy(data, choice)
+@@ -160,7 +158,7 @@ def try_to_buy(data, item_name):
+     cost = item["cost"]
+     if money < cost:
+         printer.fail(
+-            data["prefix"], "Sorry but you don't have enough money for that!")
++            data["prefix"], "ごめんなさい、お金が足りません!")
+         return
+     else:
+         data[currency] = data[currency] - cost
+@@ -168,5 +166,5 @@ def try_to_buy(data, item_name):
+             data["items"][item_name]["attributes"] = ["owned"]
+         else:
+             data["owned_food"].append(item.copy())
+-        printer.success(data["prefix"], "Ah! A splendid choice!")
++        printer.success(data["prefix"], "まいど! すばらしい選択です!")
+         return
+diff --git a/nekoatsume/lib/data_constructor.py b/nekoatsume/lib/data_constructor.py
+index e2b254f..dee2861 100644
+--- a/nekoatsume/lib/data_constructor.py
++++ b/nekoatsume/lib/data_constructor.py
+@@ -51,34 +51,41 @@ def make_item(name, cost, cur, size, desc):
+ #       on it. Maybe there can be some static lists per type of item. Such as
+ #       climbable = ["is on top of", "is clawing at", "is jumping off of"]
+ #       then add that to the end of each item
++#
++# 日本語化メモ: アイテム名はそのまま辞書のキーにもなる。名前を変えると
++# 既存の var/data.json とは互換性がなくなるので、その場合は data.json を削除して新規開始すること。
+ def build_items(data):
+-    data["items"]["rubber ball"] = make_item("rubber ball", 5, "s", 1, "a small bright orange rubber ball, it's squishy and squeaky!")
+-    data["items"]["sparkle ball"] = make_item("sparkle ball", 5, "g", 1, "a small clear rubber ball filled with colorful sparkling glitter!")
+-    data["items"]["ball of yarn"] = make_item("ball of yarn", 10, "s", 1, "a ball of yarn, it's red!")
+-    data["items"]["fancy ball of yarn"] = make_item("fancy ball of yarn", 15, "g", 1, "a fancy ball of yarn, it's red, blue, and green with shimmering silver threads too!")
+-    data["items"]["tennis ball"] = make_item("tennis ball", 25, "s", 1, "a tennis ball, it's fuzzy and bright yellow!")
+-    data["items"]["paper bag"] = make_item("paper bag", 20, "s", 1, "A paper grocery bag, makes lots of crinkling noises!")
+-    data["items"]["scratching post"] = make_item("scratching post", 5, "g", 1, "A nice post for your cats to scratch!")
+-    data["items"]["fancy scratching post"] = make_item("fancy scratching post", 15, "g", 1, "A fancy deluxe hardwood and faux leather scratching post!")
+-    data["items"]["fishbowl"] = make_item("fishbowl", 10, "g", 1, "A small fishbowl with a cute goldfish swimming inside!")
+-    data["items"]["small condo"] = make_item("small condo", 75, "s", 3, "A small sized, partially carpeted kitty condo with room for up to 3 cats!")
+-    data["items"]["medium condo"] = make_item("medium condo", 150, "s", 5, "A medium sized kitty condo with full carpeting and room for up to 5 cats!")
+-    data["items"]["large condo"] = make_item("large condo", 50, "g", 7, "A large sized kitty condo with luxurious berber carpeting, hand stitching, and room for up to 7 cats!")
+-    data["items"]["bag of catnip"] = make_item("bag of catnip", 7, "g", 1, "A small bag of catnip, the smell drives cats wild!")
+-    data["items"]["plain pillow"] = make_item("plain pillow", 30, "s", 1, "A small plain pillow, it's soft and blue!")
+-    data["items"]["tie-dye pillow"] = make_item("tie-dye pillow", 15, "g", 1, "A thick fluffy pillow made from very soft tie-dyed fleece!")
+-    data["items"]["plastic bucket"] = make_item("plastic bucket", 20, "s", 1, "A small green plastic bucket with white handle, I has a bucket!")
+-    data["items"]["cereal box"] = make_item("cereal box", 15, "s", 1, "An empty box of Cinnamon Toasty Purrs cereal!")
+-    data["items"]["fruit box"] = make_item("fruit box", 75, "s", 1, "A small cardboard fruit box, if I fits I sits!")
+-    data["items"]["large box"] = make_item("large box", 30, "g", 4, "A large cardboard box that originally held an appliance but now has room to hold up to 4 cats!")
+-    data["items"]["butterfly toy"] = make_item("butterfly toy", 15, "g", 1, "A cute butterfly toy suspended from a string on a long stick, flying fun!")
+-    data["items"]["robotic laser pointer"] = make_item("robotic laser pointer", 125, "g", 1, "A little robotic arm with attached laser pointer, all time favorite!")
+-    data["items"]["rainbow umbrella"] = make_item("rainbow umbrella", 25, "g", 5, "A large rainbow patterned umbrella with room for up to 5 cats!")
+-    data["items"]["plain umbrella"] = make_item("plain umbrella", 250, "s", 4, "A large plain umbrella with room for up to 4 cats, it's bright yellow!")
+-    data["items"]["plush froggy"] = make_item("plush froggy", 75, "s", 1, "A cute green plush frog toy that squeaks when squeezed!")
+-    data["items"]["bowl of dry food"] = make_item("bowl of dry food", 10, "s", 300, "Basic dry cat food, it is very crunchy and plain.")
+-    data["items"]["can of wet food"] = make_item("can of wet food", 2, "g", 300, "Basic wet cat food, it has a pungent smell!")
+-    data["items"]["can of fancy food"] = make_item("can of fancy food", 5, "g", 300, "Artisanally hand-crafted fair trade organic cat food, mmmm!")
++    items = [
++        ("ゴムボール", 5, "s", 1, "小さな明るいオレンジ色のゴムボール。ふにふにで、ピコピコ鳴るよ!"),
++        ("キラキラボール", 5, "g", 1, "きらめくラメが入った、小さな透明のゴムボール!"),
++        ("毛糸玉", 10, "s", 1, "赤い毛糸玉だよ!"),
++        ("高級毛糸玉", 15, "g", 1, "赤・青・緑に銀色の糸がきらめく、高級な毛糸玉!"),
++        ("テニスボール", 25, "s", 1, "毛羽立った鮮やかな黄色のテニスボール!"),
++        ("紙袋", 20, "s", 1, "スーパーの紙袋。ガサガサいい音がするよ!"),
++        ("爪とぎポール", 5, "g", 1, "猫がバリバリ爪をとげる、いい感じのポール!"),
++        ("高級爪とぎポール", 15, "g", 1, "硬い木と合成皮革でできた、デラックスな爪とぎポール!"),
++        ("金魚鉢", 10, "g", 1, "かわいい金魚が泳ぐ小さな金魚鉢!"),
++        ("小型キャットハウス", 75, "s", 3, "少しだけカーペット張りの小さなキャットハウス。3匹まで入れるよ!"),
++        ("中型キャットハウス", 150, "s", 5, "全面カーペット張りの中くらいのキャットハウス。5匹まで入れるよ!"),
++        ("大型キャットハウス", 50, "g", 7, "高級ベルベル絨毯に手縫いの仕上げ、7匹まで入れる大きなキャットハウス!"),
++        ("マタタビの袋", 7, "g", 1, "小さなマタタビの袋。においで猫が大興奮!"),
++        ("無地のクッション", 30, "s", 1, "青くてやわらかい、小さな無地のクッション!"),
++        ("絞り染めのクッション", 15, "g", 1, "絞り染めのフリースでできた、ふかふかの厚いクッション!"),
++        ("プラスチックのバケツ", 20, "s", 1, "白い取っ手のついた小さな緑のバケツ。バケツがあるぞ!"),
++        ("シリアルの箱", 15, "s", 1, "「シナモンとろけるゴロゴロ」の空き箱!"),
++        ("果物の箱", 75, "s", 1, "小さな段ボールの果物箱。入れそうなら、入っちゃう!"),
++        ("大きな箱", 30, "g", 4, "もとは家電が入っていた大きな段ボール箱。猫が4匹まで入れるよ!"),
++        ("蝶々のおもちゃ", 15, "g", 1, "長い棒の先の糸に蝶々がぶら下がった、かわいいおもちゃ。ひらひら楽しい!"),
++        ("ロボットレーザーポインター", 125, "g", 1, "レーザーポインターを持った小さなロボットアーム。みんな大好き!"),
++        ("虹色の傘", 25, "g", 5, "虹色もようの大きな傘。猫が5匹まで入れるよ!"),
++        ("無地の傘", 250, "s", 4, "明るい黄色の大きな無地の傘。猫が4匹まで入れるよ!"),
++        ("カエルのぬいぐるみ", 75, "s", 1, "ぎゅっとすると鳴く、緑のかわいいカエルのぬいぐるみ!"),
++        ("ドライフード", 10, "s", 300, "ごく普通のドライフード。カリカリでシンプルな味。"),
++        ("ウェットフード缶", 2, "g", 300, "ごく普通のウェットフード。においが強烈!"),
++        ("高級フード缶", 5, "g", 300, "職人が手づくりした、フェアトレードのオーガニック猫ごはん。んー、おいしい!"),
++    ]
++    for name, cost, cur, size, desc in items:
++        data["items"][name] = make_item(name, cost, cur, size, desc)
+ 
+ 
+ def make_cat(name, desc, treasure, mod, time_limit=30, entry_chance=0.1, exclusive=False, fav_toy="", strength=5):
+@@ -104,8 +111,8 @@ def make_cat(name, desc, treasure, mod, time_limit=30, entry_chance=0.1, exclusi
+ #
+ # TODO: should this be named birth_cats? ;)
+ def build_cats(data):
+-    data["cats"]["Gordo"] = make_cat("Gordo", "The most fucking annoying cat, he's always eating your food", "It's a useless piece of wood because Gordo sucks", 0.1)
+-    data["cats"]["Pukka"] = make_cat("Pukka", "Pukka is a white shorthair with cream splotches and green eyes; she loves to chase lasers and surf", "It's a block of surf wax", 0.1)
+-    data["cats"]["Peebles"] = make_cat("Peebles", "Peebles is a black and white shorthair with blue eyes; he likes death metal music and piles of catnip", "It's a tortoise shell guitar pick", 0.1)
+-    data["cats"]["Tarawa"] = make_cat("Tarawa", "Tarawa is a gray longhair with white streaks and gray eyes; she likes relaxing and chasing birds", "It's a Blue Jay feather", 0.1, strength=6)
+-    data["cats"]["Felix"] = make_cat("Felix", "Felix is an orange and white shorthair tabby with yellow eyes; he is very mellow and mostly meditates all day long", "It's a Buddha incense holder", 0.1)
++    data["cats"]["ゴードー"] = make_cat("ゴードー", "いつもあなたのごはんを食べにくる、いちばん手のかかる猫", "役に立たない木切れ(ゴードーだから)", 0.1)
++    data["cats"]["プッカ"] = make_cat("プッカ", "プッカはクリーム色のぶちがある白い短毛で、緑の目の猫。レーザーを追いかけたり、サーフィンをするのが大好き", "サーフワックスのかたまり", 0.1)
++    data["cats"]["ピーブルズ"] = make_cat("ピーブルズ", "ピーブルズは青い目の白黒の短毛猫。デスメタルとマタタビの山が好き", "べっ甲のギターピック", 0.1)
++    data["cats"]["タラワ"] = make_cat("タラワ", "タラワは白い筋の入ったグレーの長毛で、灰色の目の猫。のんびりするのと、鳥を追いかけるのが好き", "アオカケスの羽根", 0.1, strength=6)
++    data["cats"]["フェリックス"] = make_cat("フェリックス", "フェリックスはオレンジと白の短毛のトラ猫で、黄色い目。とてもおだやかで、一日中ほとんど瞑想している", "仏像のお香立て", 0.1)
+diff --git a/nekoatsume/lib/display.py b/nekoatsume/lib/display.py
+index a6945f7..f3e4c41 100644
+--- a/nekoatsume/lib/display.py
++++ b/nekoatsume/lib/display.py
+@@ -95,11 +95,13 @@ def compute_interactions(data):
+ def desc_yard(data):
+     """Describe current yard situation."""
+     toys = [item for item in data["yard"]]
+-    tw("You have {0} total spaces on your lawn".format(6))
++    tw("庭は全部で{0}マスあります".format(6))
+     for toy in toys:
+-        occupants = toy["occupant"] or ["no one"]
+-        tw("You have a {0} being used by {1}".format(
+-            toy["name"], ", and ".join(occupants)))
++        if toy["occupant"]:
++            tw("{0}は{1}が使っています".format(
++                toy["name"], "、".join(toy["occupant"])))
++        else:
++            tw("{0}は空いています".format(toy["name"]))
+ 
+ 
+ def check_status(data):
+@@ -141,7 +143,7 @@ def recieve_treasures(data):
+         return
+     for treasure in data["pending_treasures"]:
+         if isinstance(treasure, (list, tuple)) and len(treasure) >= 2:
+-            tw("{0} gave you a treasure! {1}!!!".format(treasure[0], treasure[1]))
++            tw("{0}がお宝をくれました!「{1}」!!!".format(treasure[0], treasure[1]))
+     data["pending_treasures"] = []
+ 
+ 
+@@ -149,38 +151,39 @@ def check_treasures(data):
+     treasures = [cat for cat in data["cats"].values() if cat.get("given_treasure", False)]
+     if treasures:
+         for cat in treasures:
+-            tw("You have a treasure from {0}! {1}!!!".format(
++            tw("{0}からもらったお宝:「{1}」!".format(
+                 cat["name"], cat["treasure"]))
+     else:
+-        tw("Aww, no cats have given you treasures yet.. But don't worry! Keep trying and I'm sure they will!!")
++        tw("まだ猫からお宝をもらっていません…。でも大丈夫! 続けていれば、きっともらえますよ!")
+ 
+ 
+ def collect_money(data):
+     """Collect money left by cats."""
+     if len(data["pending_money"]) == 0:
+-        tw("Sorry, no cats have left you anything")
++        tw("猫たちはまだ何も残していきませんでした")
+         return
+     pending = data["pending_money"][:]
+     data["pending_money"] = []
+     for money in pending:
+         if isinstance(money, (list, tuple)) and len(money) >= 3:
+             currency = money[2]
+-            tw("Yes! {0} left you {1}{2} fish!".format(
+-                money[0], str(money[1]), " gold" if currency == "g" else " silver"))
++            tw("やったね! {0}が{1}を置いていきました!".format(
++                money[0], printer.fish_text(money[1], currency)))
+             data[currency + "_fish"] += money[1]
+ 
+ 
+ def print_help(data):
+     """Print the game help."""
+-    tw("Welcome to Neko Atsume!")
+-    tw("In this game cats come to visit you and you feed them")
+-    tw("it's pretty cool, so you should play more")
++    tw("ネコあつめへようこそ!")
++    tw("このゲームでは、猫たちがあなたの庭に遊びに来て、あなたはごはんをあげます。")
++    tw("とてもいいゲームなので、ぜひもっと遊んでね。")
++    tw("メニューは、番号かコマンド名を入力して選べます。")
+ 
+ 
+ def quit(data):
+     """Quit the game."""
+     data["want_to_play"] = False
+-    tw("Saving game! See you later!")
++    tw("ゲームを保存しました。またね!")
+     prep_data_on_close(data)
+ 
+ 
+@@ -211,31 +214,38 @@ def main(data):
+     data["want_to_play"] = True
+     prev_start = data.get("start", None)
+     data["start"] = time.time()
+-    actions = {"quit": quit,
+-               "look": check_status,
+-               "shop": buy_menu.menu,
+-               "yard": yard.menu,
+-               "collect money": collect_money,
+-               "check food": yard.check_food,
+-               "check treasures": check_treasures,
+-               "help": print_help}
++    actions = {"庭を見る": check_status,
++               "庭に出る": yard.menu,
++               "ショップ": buy_menu.menu,
++               "さかなを受け取る": collect_money,
++               "エサを確認": yard.check_food,
++               "お宝を確認": check_treasures,
++               "ヘルプ": print_help,
++               "終了": quit}
++    labels = list(actions.keys())
+     banner()
+-    data["prefix"] = "{.BLUE}[Welcome!]{.ENDC}".format(
+-        printer.PColors, printer.PColors)
++    data["prefix"] = "{.BLUE}" + printer.PREFIX_WELCOME + "{.ENDC}"
++    data["prefix"] = data["prefix"].format(printer.PColors, printer.PColors)
+     check_status(data)
+     bestow_treasures(data, prev_start)
+     recieve_treasures(data)
+-    data["prefix"] = "[Main Menu]"
++    data["prefix"] = printer.PREFIX_MAIN
+     data["completer"] = actionCompleter()
+ 
+     readline.set_completer(data["completer"].complete)
+     readline.parse_and_bind('tab: complete')
+     while data["want_to_play"] is True:
+-        data["completer"].set_actions(actions.keys())
+-        data["prefix"] = "{.MAIN}[Main Menu]{.ENDC}".format(
+-            printer.PColors, printer.PColors)
+-        printer.prompt(data["prefix"], actions.keys())
+-        inp = input("{0} Choose an action! ".format(data["prefix"]))
++        data["completer"].set_actions(labels)
++        data["prefix"] = printer.PREFIX_MAIN
++        printer.prompt(data["prefix"], labels)
++        inp = input("{0} 行動を選んでください! ".format(data["prefix"])).strip()
++        try:
++            # 番号入力(全角数字もOK)
++            idx = int(inp)
++            if 1 <= idx <= len(labels):
++                inp = labels[idx - 1]
++        except ValueError:
++            pass
+         if inp in actions:
+             actions[inp](data)
+             continue
+diff --git a/nekoatsume/lib/printer.py b/nekoatsume/lib/printer.py
+index 35e38fb..cb428dc 100644
+--- a/nekoatsume/lib/printer.py
++++ b/nekoatsume/lib/printer.py
+@@ -5,6 +5,15 @@ This module handles special printing of output to player including
+ colorization of game areas.
+ """
+ 
++# 画面ごとの見出し。表示にも色分けの判定にも使うので、ここで一元管理する。
++PREFIX_MAIN = "[メインメニュー]"
++PREFIX_WELCOME = "[ようこそ!]"
++PREFIX_SHOP = "[ショップ]"
++PREFIX_YARD = "[おにわ]"
++
++# 通貨の表示名(内部キーは "s" / "g" のまま)。にぼし・かつおぶし等に変えたい場合はここだけ直す。
++CURRENCY_NAME = {"s": "銀", "g": "金"}
++
+ 
+ class PColors:
+     """Define some colors up in this piece."""
+@@ -37,44 +46,50 @@ class PColors:
+         self.ENDC = ''
+ 
+ 
++def price(amount, currency):
++    """値段の短い表記。例: 銀5 / 金15"""
++    return "{0}{1}".format(CURRENCY_NAME[currency], amount)
++
++
++def fish_text(amount, currency):
++    """さかなの数の表記。例: 銀のさかな12匹"""
++    return "{0}のさかな{1}匹".format(CURRENCY_NAME[currency], amount)
++
++
++def _prefix_color(prefix):
++    if prefix == PREFIX_SHOP:
++        return PColors.SHOP
++    if prefix == PREFIX_YARD:
++        return PColors.YARD
++    return PColors.MAIN
++
++
++def _out(prefix, words, words_color=""):
++    """見出し(画面ごとの色)+本文(必要なら色付き)を1行で出力する。"""
++    end = PColors.ENDC if words_color else ""
++    print("{0}{1}{2} {3}{4}{5}".format(
++        _prefix_color(prefix), prefix, PColors.ENDC,
++        words_color, words, end))
++
++
+ def invalid(prefix):
+     """Apologize for not understand user input"""
+-    sorry_msg = "Sorry, I don't understand."
+-    if prefix == '[Item Shop]':
+-        print("{.SHOP}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, sorry_msg, PColors))
+-    elif prefix == '[The Yard]':
+-        print("{.YARD}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, sorry_msg, PColors))
+-    else:
+-        print("{.MAIN}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, sorry_msg, PColors))
++    _out(prefix, "すみません、よくわかりませんでした。", PColors.YELLOW)
++
+ 
+ def fail(prefix, words):
+     """Print failure messages."""
+-    if prefix == '[Item Shop]':
+-        print("{.SHOP}{}{.ENDC} {.RED}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
+-    elif prefix == '[Yard]':
+-        print("{.YARD}{}{.ENDC} {.RED}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
++    if prefix in (PREFIX_SHOP, PREFIX_YARD):
++        _out(prefix, words, PColors.RED)
+     else:
+-        print("{.MAIN}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
++        _out(prefix, words, PColors.YELLOW)
++
+ 
+ def prompt(prefix, actions):
+     """Action prompt."""
+-    options = ", ".join(actions)
+-    prompt = "Your options are:"
+-    if prefix == '[Item Shop]':
+-        print("{.SHOP}{}{.ENDC} {} {}".format(
+-            PColors, prefix, PColors, prompt, options))
+-    elif prefix == '[The Yard]':
+-        print("{.YARD}{}{.ENDC} {} {}".format(
+-            PColors, prefix, PColors, prompt, options))
+-    else:
+-        print("{.MAIN}{}{.ENDC} {} {}".format(
+-            PColors, prefix, PColors, prompt, options))
++    _out(prefix, "選べる行動:")
++    for i, action in enumerate(actions, 1):
++        print("  {0}. {1}".format(i, action))
+ 
+ 
+ def p(prefix, words):
+@@ -84,38 +99,19 @@ def p(prefix, words):
+ 
+ def shop(prefix, words):
+     """Print shop messages."""
+-    print("{.SHOP}{}{.ENDC} {}".format(PColors, prefix, PColors, words))
++    print("{0}{1}{2} {3}".format(PColors.SHOP, prefix, PColors.ENDC, words))
+ 
+ 
+ def success(prefix, words):
+     """Print success messages."""
+-    if prefix == '[Item Shop]':
+-        print("{.SHOP}{}{.ENDC} {.GREEN}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
+-    elif prefix == '[The Yard]':
+-        print("{.YARD}{}{.ENDC} {.GREEN}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
+-    elif prefix == '[Welcome!]':
+-        print("{.YARD}{}{.ENDC} {.GREEN}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
+-    else:
+-        print("{.MAIN}{}{.ENDC} {.GREEN}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
++    _out(prefix, words, PColors.GREEN)
+ 
+ 
+ def warn(prefix, words):
+     """Print warning messages."""
+-    if prefix == '[Item Shop]':
+-        print("{.SHOP}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
+-    elif prefix == '[The Yard]':
+-        print("{.YARD}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
+-    else:
+-        print("{.MAIN}{}{.ENDC} {.YELLOW}{}{.ENDC}".format(
+-            PColors, prefix, PColors, PColors, words, PColors))
++    _out(prefix, words, PColors.YELLOW)
+ 
+ 
+ def yard(prefix, words):
+     """Print yard messages."""
+-    print("{.GREEN}{}{.ENDC} {}".format(PColors, prefix, PColors, words))
++    print("{0}{1}{2} {3}".format(PColors.GREEN, prefix, PColors.ENDC, words))
+diff --git a/nekoatsume/lib/yard.py b/nekoatsume/lib/yard.py
+index f4f7f15..0b1f5cd 100644
+--- a/nekoatsume/lib/yard.py
++++ b/nekoatsume/lib/yard.py
+@@ -20,7 +20,7 @@ def get_choice(options, prompt, prefix):
+     戻り値: 選ばれた key、または None（キャンセル/無効）
+     """
+     if len(options) == 0:
+-        printer.warn(prefix, "No options available!")
++        printer.warn(prefix, "選べるものがありません!")
+         return None
+ 
+     # 番号付きで表示
+@@ -42,39 +42,34 @@ def get_choice(options, prompt, prefix):
+     except ValueError:
+         pass
+     
+-    # 文字入力（大文字小文字・冠詞無視でマッチ）
++    # 文字入力（大文字小文字は無視。名前でも表示名でもマッチ）
+     raw_norm = raw.strip().lower()
+-    raw_norm = raw_norm.lstrip("a ").lstrip("an ").lstrip("the ")
+     
+     for key, name in options:
+-        if raw_norm == key.lower():
+-            return key
+-        # 表示名でもマッチ
+-        name_norm = name.lower().lstrip("a ").lstrip("an ").lstrip("the ")
+-        if raw_norm == name_norm:
++        if raw_norm == key.lower() or raw_norm == name.lower():
+             return key
+     
+-    printer.warn(prefix, "I'm sorry I didn't recognize that option")
++    printer.warn(prefix, "その選択肢はわかりませんでした")
+     return None
+ 
+ 
+ def menu(data):
+     """Display yard menu."""
+-    data["prefix"] = "[The Yard]"
++    data["prefix"] = printer.PREFIX_YARD
+     list_yard_items(data)
+     data["in_yard"] = True
+     
+     actions = [
+-        ("list owned items", "List owned items"),
+-        ("examine yard", "Examine yard"),
+-        ("cats", "Look at cats"),
+-        ("place toy", "Place toy"),
+-        ("place food", "Place food"),
+-        ("leave yard", "Leave yard"),
++        ("list owned items", "持っているアイテム"),
++        ("examine yard", "庭を調べる"),
++        ("cats", "猫を見る"),
++        ("place toy", "おもちゃを置く"),
++        ("place food", "エサを置く"),
++        ("leave yard", "庭を出る"),
+     ]
+     
+     while data["in_yard"]:
+-        choice = get_choice(actions, "What do you want to do?", data["prefix"])
++        choice = get_choice(actions, "どうしますか?", data["prefix"])
+         
+         if choice is None:
+             continue
+@@ -106,9 +101,9 @@ def list_owned_items(data):
+     """Display a list of owned items."""
+     owned_items = [item["name"] for item in data["items"].values() if "owned" in item["attributes"]]
+     if len(owned_items) == 0:
+-        printer.warn(data["prefix"], "You don't own any items, better go buy some in the shop~!")
++        printer.warn(data["prefix"], "アイテムを持っていません。ショップで買ってきましょう!")
+     else:
+-        printer.yard(data["prefix"], "You currently own a {0}".format(", and a ".join(owned_items)))
++        printer.yard(data["prefix"], "持っているアイテム: {0}".format("、".join(owned_items)))
+ 
+ 
+ def list_yard_items(data):
+@@ -116,13 +111,14 @@ def list_yard_items(data):
+     if len(data["yard"]) > 0:
+         items = [item for item in data["yard"]]
+         for item in items:
+-            cats = "no one"
+             if item["occupied"]:
+-                cats = ", and ".join([cat for cat in item["occupant"]])
+-            printer.yard(data["prefix"], "Your yard currently has a {0} in it, occupied by {1}".format(item["name"], cats))
++                printer.yard(data["prefix"], "庭に{0}があります。使っているのは{1}です".format(
++                    item["name"], "、".join(item["occupant"])))
++            else:
++                printer.yard(data["prefix"], "庭に{0}があります。今はだれも使っていません".format(item["name"]))
+         cat_activities(data)
+     else:
+-        printer.warn(data["prefix"], "You currently have nothing in your yard, how sad")
++        printer.warn(data["prefix"], "庭には何もありません。さみしいですね")
+     check_food(data)
+ 
+ 
+@@ -132,7 +128,7 @@ def cat_activities(data):
+     for item in yard_items:
+         cats = item[1]
+         for cat in cats:
+-            printer.yard(data["prefix"], "{0} is playing with a {1}".format(cat, item[0]['name']))
++            printer.yard(data["prefix"], "{0}が{1}で遊んでいます".format(cat, item[0]['name']))
+ 
+ 
+ def cats(data):
+@@ -141,11 +137,11 @@ def cats(data):
+     [cats_in_yard.extend(obj["occupant"]) for obj in data["yard"] if obj["occupied"]]
+     
+     if len(cats_in_yard) == 0:
+-        printer.warn(data["prefix"], "There are no cats in your yard right now!")
++        printer.warn(data["prefix"], "今、庭に猫はいません!")
+         return
+     
+     cat_options = [(cat, cat) for cat in cats_in_yard]
+-    choice = get_choice(cat_options, "Which cat would you like to look at?", data["prefix"])
++    choice = get_choice(cat_options, "どの猫を見ますか?", data["prefix"])
+     
+     if choice:
+         desc_cat(data, choice)
+@@ -165,10 +161,10 @@ def place(data):
+             placable_items.append((item["name"], item["name"]))
+     
+     if len(placable_items) == 0:
+-        printer.warn(data["prefix"], "You don't have any items to place!")
++        printer.warn(data["prefix"], "置けるアイテムがありません!")
+         return
+     
+-    choice = get_choice(placable_items, "Which item would you like to place?", data["prefix"])
++    choice = get_choice(placable_items, "どのアイテムを置きますか?", data["prefix"])
+     
+     if choice:
+         item = next(item for item in items_list if item["name"] == choice)
+@@ -180,9 +176,9 @@ def try_to_place(data, item):
+     if sum([toy["size"] for toy in data["yard"]]) + item["size"] < data["space"]:
+         data["yard"].append(item)
+         item["in_yard"] = True
+-        printer.success(data["prefix"], "Nice! Your yard now consists of a {0}".format(", and a ".join([toy["name"] for toy in data["yard"]])))
++        printer.success(data["prefix"], "いいね! 庭には今、{0}があります".format("、".join([toy["name"] for toy in data["yard"]])))
+     else:
+-        printer.warn(data["prefix"], "Oops that won't fit in your yard! Would you like to replace an item?")
++        printer.warn(data["prefix"], "おっと、庭に入りきりません! どれかと入れ替えますか?")
+         offer_replace(data, item)
+ 
+ 
+@@ -190,7 +186,7 @@ def offer_replace(data, item):
+     """Replace an existing item in yard."""
+     yard_items = [(toy["name"], toy["name"]) for toy in data["yard"]]
+     
+-    choice = get_choice(yard_items, "Which item would you like to replace?", data["prefix"])
++    choice = get_choice(yard_items, "どのアイテムと入れ替えますか?", data["prefix"])
+     
+     if choice:
+         remove_from_yard(data, choice)
+@@ -210,9 +206,9 @@ def remove_from_yard(data, item_name):
+ def check_food(data):
+     """Check food in yard."""
+     if data["food_remaining"] == 0:
+-        printer.warn(data["prefix"], "Your yard currently doesn't have any food in it! No cats will come if there's no food!")
++        printer.warn(data["prefix"], "庭にエサがありません! エサがないと猫は来ませんよ!")
+     else:
+-        printer.success(data["prefix"], "Your yard currently has a {0} in it with {1} time remaining".format(data["food"], data["food_remaining"]))
++        printer.success(data["prefix"], "庭に{0}があります(残り{1}分)".format(data["food"], data["food_remaining"]))
+ 
+ 
+ def food(data):
+@@ -226,10 +222,10 @@ def food(data):
+         placable_items.append((str(idx), "{0} ({1})".format(item["name"], idx)))
+     
+     if len(placable_items) == 0:
+-        printer.warn(data["prefix"], "You don't have any food! Buy some in the shop first!")
++        printer.warn(data["prefix"], "エサを持っていません! 先にショップで買いましょう!")
+         return
+     
+-    choice = get_choice(placable_items, "Which would you like to place? (number or ENTER to cancel)", data["prefix"])
++    choice = get_choice(placable_items, "どれを置きますか?(番号を入力、ENTERでキャンセル)", data["prefix"])
+     
+     if choice:
+         idx = int(choice)
+@@ -241,4 +237,4 @@ def put_food_in_yard(data, arr_idx):
+     food = data["owned_food"].pop(arr_idx)
+     data["food"] = food["name"]
+     data["food_remaining"] = food["size"]
+-    printer.success(data["prefix"], "Sweet! Your yard now has a {0} set out, and {1} of food remaining".format(data["food"], data["food_remaining"]))
++    printer.success(data["prefix"], "やった! 庭に{0}を置きました(残り{1}分)".format(data["food"], data["food_remaining"]))

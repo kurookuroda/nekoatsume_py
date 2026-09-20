@@ -20,7 +20,7 @@ def get_choice(options, prompt, prefix):
     戻り値: 選ばれた key、または None（キャンセル/無効）
     """
     if len(options) == 0:
-        printer.warn(prefix, "No options available!")
+        printer.warn(prefix, "選べるものがありません!")
         return None
 
     # 番号付きで表示
@@ -42,39 +42,34 @@ def get_choice(options, prompt, prefix):
     except ValueError:
         pass
     
-    # 文字入力（大文字小文字・冠詞無視でマッチ）
+    # 文字入力（大文字小文字は無視。名前でも表示名でもマッチ）
     raw_norm = raw.strip().lower()
-    raw_norm = raw_norm.lstrip("a ").lstrip("an ").lstrip("the ")
     
     for key, name in options:
-        if raw_norm == key.lower():
-            return key
-        # 表示名でもマッチ
-        name_norm = name.lower().lstrip("a ").lstrip("an ").lstrip("the ")
-        if raw_norm == name_norm:
+        if raw_norm == key.lower() or raw_norm == name.lower():
             return key
     
-    printer.warn(prefix, "I'm sorry I didn't recognize that option")
+    printer.warn(prefix, "その選択肢はわかりませんでした")
     return None
 
 
 def menu(data):
     """Display yard menu."""
-    data["prefix"] = "[The Yard]"
+    data["prefix"] = printer.PREFIX_YARD
     list_yard_items(data)
     data["in_yard"] = True
     
     actions = [
-        ("list owned items", "List owned items"),
-        ("examine yard", "Examine yard"),
-        ("cats", "Look at cats"),
-        ("place toy", "Place toy"),
-        ("place food", "Place food"),
-        ("leave yard", "Leave yard"),
+        ("list owned items", "持っているアイテム"),
+        ("examine yard", "庭を調べる"),
+        ("cats", "猫を見る"),
+        ("place toy", "おもちゃを置く"),
+        ("place food", "エサを置く"),
+        ("leave yard", "庭を出る"),
     ]
     
     while data["in_yard"]:
-        choice = get_choice(actions, "What do you want to do?", data["prefix"])
+        choice = get_choice(actions, "どうしますか?", data["prefix"])
         
         if choice is None:
             continue
@@ -106,9 +101,9 @@ def list_owned_items(data):
     """Display a list of owned items."""
     owned_items = [item["name"] for item in data["items"].values() if "owned" in item["attributes"]]
     if len(owned_items) == 0:
-        printer.warn(data["prefix"], "You don't own any items, better go buy some in the shop~!")
+        printer.warn(data["prefix"], "アイテムを持っていません。ショップで買ってきましょう!")
     else:
-        printer.yard(data["prefix"], "You currently own a {0}".format(", and a ".join(owned_items)))
+        printer.yard(data["prefix"], "持っているアイテム: {0}".format("、".join(owned_items)))
 
 
 def list_yard_items(data):
@@ -116,13 +111,14 @@ def list_yard_items(data):
     if len(data["yard"]) > 0:
         items = [item for item in data["yard"]]
         for item in items:
-            cats = "no one"
             if item["occupied"]:
-                cats = ", and ".join([cat for cat in item["occupant"]])
-            printer.yard(data["prefix"], "Your yard currently has a {0} in it, occupied by {1}".format(item["name"], cats))
+                printer.yard(data["prefix"], "庭に{0}があります。使っているのは{1}です".format(
+                    item["name"], "、".join(item["occupant"])))
+            else:
+                printer.yard(data["prefix"], "庭に{0}があります。今はだれも使っていません".format(item["name"]))
         cat_activities(data)
     else:
-        printer.warn(data["prefix"], "You currently have nothing in your yard, how sad")
+        printer.warn(data["prefix"], "庭には何もありません。さみしいですね")
     check_food(data)
 
 
@@ -132,7 +128,7 @@ def cat_activities(data):
     for item in yard_items:
         cats = item[1]
         for cat in cats:
-            printer.yard(data["prefix"], "{0} is playing with a {1}".format(cat, item[0]['name']))
+            printer.yard(data["prefix"], "{0}が{1}で遊んでいます".format(cat, item[0]['name']))
 
 
 def cats(data):
@@ -141,11 +137,11 @@ def cats(data):
     [cats_in_yard.extend(obj["occupant"]) for obj in data["yard"] if obj["occupied"]]
     
     if len(cats_in_yard) == 0:
-        printer.warn(data["prefix"], "There are no cats in your yard right now!")
+        printer.warn(data["prefix"], "今、庭に猫はいません!")
         return
     
     cat_options = [(cat, cat) for cat in cats_in_yard]
-    choice = get_choice(cat_options, "Which cat would you like to look at?", data["prefix"])
+    choice = get_choice(cat_options, "どの猫を見ますか?", data["prefix"])
     
     if choice:
         desc_cat(data, choice)
@@ -165,10 +161,10 @@ def place(data):
             placable_items.append((item["name"], item["name"]))
     
     if len(placable_items) == 0:
-        printer.warn(data["prefix"], "You don't have any items to place!")
+        printer.warn(data["prefix"], "置けるアイテムがありません!")
         return
     
-    choice = get_choice(placable_items, "Which item would you like to place?", data["prefix"])
+    choice = get_choice(placable_items, "どのアイテムを置きますか?", data["prefix"])
     
     if choice:
         item = next(item for item in items_list if item["name"] == choice)
@@ -180,9 +176,9 @@ def try_to_place(data, item):
     if sum([toy["size"] for toy in data["yard"]]) + item["size"] < data["space"]:
         data["yard"].append(item)
         item["in_yard"] = True
-        printer.success(data["prefix"], "Nice! Your yard now consists of a {0}".format(", and a ".join([toy["name"] for toy in data["yard"]])))
+        printer.success(data["prefix"], "いいね! 庭には今、{0}があります".format("、".join([toy["name"] for toy in data["yard"]])))
     else:
-        printer.warn(data["prefix"], "Oops that won't fit in your yard! Would you like to replace an item?")
+        printer.warn(data["prefix"], "おっと、庭に入りきりません! どれかと入れ替えますか?")
         offer_replace(data, item)
 
 
@@ -190,7 +186,7 @@ def offer_replace(data, item):
     """Replace an existing item in yard."""
     yard_items = [(toy["name"], toy["name"]) for toy in data["yard"]]
     
-    choice = get_choice(yard_items, "Which item would you like to replace?", data["prefix"])
+    choice = get_choice(yard_items, "どのアイテムと入れ替えますか?", data["prefix"])
     
     if choice:
         remove_from_yard(data, choice)
@@ -210,9 +206,9 @@ def remove_from_yard(data, item_name):
 def check_food(data):
     """Check food in yard."""
     if data["food_remaining"] == 0:
-        printer.warn(data["prefix"], "Your yard currently doesn't have any food in it! No cats will come if there's no food!")
+        printer.warn(data["prefix"], "庭にエサがありません! エサがないと猫は来ませんよ!")
     else:
-        printer.success(data["prefix"], "Your yard currently has a {0} in it with {1} time remaining".format(data["food"], data["food_remaining"]))
+        printer.success(data["prefix"], "庭に{0}があります(残り{1}分)".format(data["food"], data["food_remaining"]))
 
 
 def food(data):
@@ -226,10 +222,10 @@ def food(data):
         placable_items.append((str(idx), "{0} ({1})".format(item["name"], idx)))
     
     if len(placable_items) == 0:
-        printer.warn(data["prefix"], "You don't have any food! Buy some in the shop first!")
+        printer.warn(data["prefix"], "エサを持っていません! 先にショップで買いましょう!")
         return
     
-    choice = get_choice(placable_items, "Which would you like to place? (number or ENTER to cancel)", data["prefix"])
+    choice = get_choice(placable_items, "どれを置きますか?(番号を入力、ENTERでキャンセル)", data["prefix"])
     
     if choice:
         idx = int(choice)
@@ -241,4 +237,4 @@ def put_food_in_yard(data, arr_idx):
     food = data["owned_food"].pop(arr_idx)
     data["food"] = food["name"]
     data["food_remaining"] = food["size"]
-    printer.success(data["prefix"], "Sweet! Your yard now has a {0} set out, and {1} of food remaining".format(data["food"], data["food_remaining"]))
+    printer.success(data["prefix"], "やった! 庭に{0}を置きました(残り{1}分)".format(data["food"], data["food_remaining"]))

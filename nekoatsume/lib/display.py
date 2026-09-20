@@ -95,11 +95,13 @@ def compute_interactions(data):
 def desc_yard(data):
     """Describe current yard situation."""
     toys = [item for item in data["yard"]]
-    tw("You have {0} total spaces on your lawn".format(6))
+    tw("庭は全部で{0}マスあります".format(6))
     for toy in toys:
-        occupants = toy["occupant"] or ["no one"]
-        tw("You have a {0} being used by {1}".format(
-            toy["name"], ", and ".join(occupants)))
+        if toy["occupant"]:
+            tw("{0}は{1}が使っています".format(
+                toy["name"], "、".join(toy["occupant"])))
+        else:
+            tw("{0}は空いています".format(toy["name"]))
 
 
 def check_status(data):
@@ -141,7 +143,7 @@ def recieve_treasures(data):
         return
     for treasure in data["pending_treasures"]:
         if isinstance(treasure, (list, tuple)) and len(treasure) >= 2:
-            tw("{0} gave you a treasure! {1}!!!".format(treasure[0], treasure[1]))
+            tw("{0}がお宝をくれました!「{1}」!!!".format(treasure[0], treasure[1]))
     data["pending_treasures"] = []
 
 
@@ -149,38 +151,39 @@ def check_treasures(data):
     treasures = [cat for cat in data["cats"].values() if cat.get("given_treasure", False)]
     if treasures:
         for cat in treasures:
-            tw("You have a treasure from {0}! {1}!!!".format(
+            tw("{0}からもらったお宝:「{1}」!".format(
                 cat["name"], cat["treasure"]))
     else:
-        tw("Aww, no cats have given you treasures yet.. But don't worry! Keep trying and I'm sure they will!!")
+        tw("まだ猫からお宝をもらっていません…。でも大丈夫! 続けていれば、きっともらえますよ!")
 
 
 def collect_money(data):
     """Collect money left by cats."""
     if len(data["pending_money"]) == 0:
-        tw("Sorry, no cats have left you anything")
+        tw("猫たちはまだ何も残していきませんでした")
         return
     pending = data["pending_money"][:]
     data["pending_money"] = []
     for money in pending:
         if isinstance(money, (list, tuple)) and len(money) >= 3:
             currency = money[2]
-            tw("Yes! {0} left you {1}{2} fish!".format(
-                money[0], str(money[1]), " gold" if currency == "g" else " silver"))
+            tw("やったね! {0}が{1}を置いていきました!".format(
+                money[0], printer.fish_text(money[1], currency)))
             data[currency + "_fish"] += money[1]
 
 
 def print_help(data):
     """Print the game help."""
-    tw("Welcome to Neko Atsume!")
-    tw("In this game cats come to visit you and you feed them")
-    tw("it's pretty cool, so you should play more")
+    tw("ネコあつめへようこそ!")
+    tw("このゲームでは、猫たちがあなたの庭に遊びに来て、あなたはごはんをあげます。")
+    tw("とてもいいゲームなので、ぜひもっと遊んでね。")
+    tw("メニューは、番号かコマンド名を入力して選べます。")
 
 
 def quit(data):
     """Quit the game."""
     data["want_to_play"] = False
-    tw("Saving game! See you later!")
+    tw("ゲームを保存しました。またね!")
     prep_data_on_close(data)
 
 
@@ -211,31 +214,38 @@ def main(data):
     data["want_to_play"] = True
     prev_start = data.get("start", None)
     data["start"] = time.time()
-    actions = {"quit": quit,
-               "look": check_status,
-               "shop": buy_menu.menu,
-               "yard": yard.menu,
-               "collect money": collect_money,
-               "check food": yard.check_food,
-               "check treasures": check_treasures,
-               "help": print_help}
+    actions = {"庭を見る": check_status,
+               "庭に出る": yard.menu,
+               "ショップ": buy_menu.menu,
+               "さかなを受け取る": collect_money,
+               "エサを確認": yard.check_food,
+               "お宝を確認": check_treasures,
+               "ヘルプ": print_help,
+               "終了": quit}
+    labels = list(actions.keys())
     banner()
-    data["prefix"] = "{.BLUE}[Welcome!]{.ENDC}".format(
-        printer.PColors, printer.PColors)
+    data["prefix"] = "{.BLUE}" + printer.PREFIX_WELCOME + "{.ENDC}"
+    data["prefix"] = data["prefix"].format(printer.PColors, printer.PColors)
     check_status(data)
     bestow_treasures(data, prev_start)
     recieve_treasures(data)
-    data["prefix"] = "[Main Menu]"
+    data["prefix"] = printer.PREFIX_MAIN
     data["completer"] = actionCompleter()
 
     readline.set_completer(data["completer"].complete)
     readline.parse_and_bind('tab: complete')
     while data["want_to_play"] is True:
-        data["completer"].set_actions(actions.keys())
-        data["prefix"] = "{.MAIN}[Main Menu]{.ENDC}".format(
-            printer.PColors, printer.PColors)
-        printer.prompt(data["prefix"], actions.keys())
-        inp = input("{0} Choose an action! ".format(data["prefix"]))
+        data["completer"].set_actions(labels)
+        data["prefix"] = printer.PREFIX_MAIN
+        printer.prompt(data["prefix"], labels)
+        inp = input("{0} 行動を選んでください! ".format(data["prefix"])).strip()
+        try:
+            # 番号入力(全角数字もOK)
+            idx = int(inp)
+            if 1 <= idx <= len(labels):
+                inp = labels[idx - 1]
+        except ValueError:
+            pass
         if inp in actions:
             actions[inp](data)
             continue

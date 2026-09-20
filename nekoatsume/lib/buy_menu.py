@@ -20,7 +20,7 @@ def get_choice(options, prompt, prefix):
     戻り値: 選ばれた key、または None（キャンセル/無効）
     """
     if len(options) == 0:
-        printer.warn(prefix, "No options available!")
+        printer.warn(prefix, "選べるものがありません!")
         return None
 
     for i, (key, name) in enumerate(options, 1):
@@ -40,38 +40,35 @@ def get_choice(options, prompt, prefix):
         pass
     
     raw_norm = raw.strip().lower()
-    raw_norm = raw_norm.lstrip("a ").lstrip("an ").lstrip("the ")
     
     for key, name in options:
-        if raw_norm == key.lower():
-            return key
-        name_norm = name.lower().lstrip("a ").lstrip("an ").lstrip("the ")
-        if raw_norm == name_norm:
+        if raw_norm == key.lower() or raw_norm == name.lower():
             return key
     
-    printer.warn(prefix, "I'm sorry I didn't recognize that option")
+    printer.warn(prefix, "その選択肢はわかりませんでした")
     return None
 
 
 def menu(data):
     """Display item shop menu."""
-    data["prefix"] = "[Item Shop]"
+    data["prefix"] = printer.PREFIX_SHOP
     printer.shop(
-        data["prefix"], "you have {0} silver fish and {1} gold fish to spend"
-        .format(data["s_fish"], data["g_fish"]))
+        data["prefix"], "所持金: {0}、{1}"
+        .format(printer.fish_text(data["s_fish"], "s"),
+                printer.fish_text(data["g_fish"], "g")))
     list_items(data)
     data["want_to_buy"] = True
     
     actions = [
-        ("buy", "Buy"),
-        ("examine", "Examine"),
-        ("check wallet", "Check wallet"),
-        ("list items", "List items"),
-        ("leave shop", "Leave shop"),
+        ("buy", "買う"),
+        ("examine", "調べる"),
+        ("check wallet", "財布を見る"),
+        ("list items", "商品一覧"),
+        ("leave shop", "ショップを出る"),
     ]
     
     while data["want_to_buy"]:
-        choice = get_choice(actions, "What do you want to do?", data["prefix"])
+        choice = get_choice(actions, "どうしますか?", data["prefix"])
         
         if choice is None:
             continue
@@ -97,16 +94,16 @@ def list_items(data):
              if "owned" in item["attributes"]]
     for item in catalog:
         printer.shop(
-            data["prefix"], "{0} You can buy a {1} for {2}{3}".format(
-                "(toy)", item["name"], item["cost"], item["currency"]))
+            data["prefix"], "{0} {1}: {2}".format(
+                "(おもちゃ)", item["name"], printer.price(item["cost"], item["currency"])))
     for item in food:
         printer.shop(
-            data["prefix"], "{0} You can buy a {1} for {2}{3}".format(
-                "(food)", item["name"], item["cost"], item["currency"]))
+            data["prefix"], "{0} {1}: {2}".format(
+                "(エサ)", item["name"], printer.price(item["cost"], item["currency"])))
     if len(owned) > 0:
         printer.shop(
-            data["prefix"], "you already own a {0}".format(
-                ", and a ".join([item["name"] for item in owned])))
+            data["prefix"], "持っているおもちゃ: {0}".format(
+                "、".join([item["name"] for item in owned])))
 
 
 def exit_buy(data):
@@ -117,22 +114,23 @@ def exit_buy(data):
 def wallet(data):
     """Show wallet contents."""
     printer.shop(
-        data["prefix"], "you have {0} silver fish and {1} gold fish to spend"
-        .format(data["s_fish"], data["g_fish"]))
+        data["prefix"], "所持金: {0}、{1}"
+        .format(printer.fish_text(data["s_fish"], "s"),
+                printer.fish_text(data["g_fish"], "g")))
 
 
 def ex_item(data):
     """Examine item."""
     items = []
     for key, item in data["items"].items():
-        display = "{0} ({1}{2})".format(item["name"], item["cost"], item["currency"])
+        display = "{0} ({1})".format(item["name"], printer.price(item["cost"], item["currency"]))
         items.append((key, display))
     
-    choice = get_choice(items, "Which would you like to examine?", data["prefix"])
+    choice = get_choice(items, "どれを調べますか?", data["prefix"])
     
     if choice:
         item = data["items"][choice]
-        printer.shop(data["prefix"], item.get("description", "No description available."))
+        printer.shop(data["prefix"], item.get("description", "説明はありません。"))
 
 
 def buy_item(data):
@@ -140,14 +138,14 @@ def buy_item(data):
     buyable_items = []
     for key, item in data["items"].items():
         if item["attributes"] == []:
-            display = "{0} ({1}{2})".format(item["name"], item["cost"], item["currency"])
+            display = "{0} ({1})".format(item["name"], printer.price(item["cost"], item["currency"]))
             buyable_items.append((key, display))
     
     if len(buyable_items) == 0:
-        printer.warn(data["prefix"], "Nothing left to buy!")
+        printer.warn(data["prefix"], "買えるものがありません!")
         return
     
-    choice = get_choice(buyable_items, "What item would you like to buy?", data["prefix"])
+    choice = get_choice(buyable_items, "何を買いますか?", data["prefix"])
     
     if choice:
         try_to_buy(data, choice)
@@ -160,7 +158,7 @@ def try_to_buy(data, item_name):
     cost = item["cost"]
     if money < cost:
         printer.fail(
-            data["prefix"], "Sorry but you don't have enough money for that!")
+            data["prefix"], "ごめんなさい、お金が足りません!")
         return
     else:
         data[currency] = data[currency] - cost
@@ -168,5 +166,5 @@ def try_to_buy(data, item_name):
             data["items"][item_name]["attributes"] = ["owned"]
         else:
             data["owned_food"].append(item.copy())
-        printer.success(data["prefix"], "Ah! A splendid choice!")
+        printer.success(data["prefix"], "まいど! すばらしい選択です!")
         return
